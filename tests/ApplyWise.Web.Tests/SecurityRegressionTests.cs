@@ -238,6 +238,48 @@ public sealed class SecurityRegressionTests
     }
 
     [Fact]
+    public void Production_sql_transport_allows_the_scoped_monsterasp_certificate_policy()
+    {
+        const string configured =
+            "Server=db59734.databaseasp.net;Database=ApplyWise;User ID=applywise_app;" +
+            "Password=test-only;Encrypt=False;TrustServerCertificate=False";
+        var options = new ProductionSqlConnectionSecurityOptions
+        {
+            AllowMonsterAspManagedCertificate = true,
+            MonsterAspHost = "db59734.databaseasp.net"
+        };
+
+        var hardened = new SqlConnectionStringBuilder(
+            ProductionSqlConnectionSecurity.Harden(configured, options));
+
+        Assert.Equal(SqlConnectionEncryptOption.Mandatory, hardened.Encrypt);
+        Assert.True(hardened.TrustServerCertificate);
+        Assert.Equal("db59734.databaseasp.net", hardened.DataSource);
+    }
+
+    [Theory]
+    [InlineData("sql.example.test", "sql.example.test", "exact MonsterASP database hostname")]
+    [InlineData("db59734.databaseasp.net", "db59735.databaseasp.net", "does not match")]
+    public void Production_sql_transport_rejects_an_unscoped_certificate_policy(
+        string configuredHost,
+        string allowedHost,
+        string expectedMessage)
+    {
+        var configured =
+            $"Server={configuredHost};Database=ApplyWise;User ID=applywise_app;Password=test-only";
+        var options = new ProductionSqlConnectionSecurityOptions
+        {
+            AllowMonsterAspManagedCertificate = true,
+            MonsterAspHost = allowedHost
+        };
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => ProductionSqlConnectionSecurity.Harden(configured, options));
+
+        Assert.Contains(expectedMessage, exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Forwarded_transport_is_normalized_before_hsts_and_https_redirection()
     {
         var program = File.ReadAllText(Path.Combine(

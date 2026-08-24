@@ -65,6 +65,9 @@ var previousDataProtectionCertificates = builder.Configuration
 var smtpHost = builder.Configuration["Email:Host"];
 var smtpFrom = builder.Configuration["Email:From"];
 var connectionStringSetting = builder.Configuration.GetConnectionString("DefaultConnection");
+var productionSqlTransport = builder.Configuration
+    .GetSection(ProductionSqlConnectionSecurityOptions.SectionName)
+    .Get<ProductionSqlConnectionSecurityOptions>() ?? new ProductionSqlConnectionSecurityOptions();
 var globalPermitLimit = builder.Configuration.GetValue("RateLimiting:GlobalPermitLimit", 240);
 if (globalPermitLimit is < 60 or > 5_000)
 {
@@ -250,7 +253,9 @@ var connectionString = connectionStringSetting
     ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
 if (isProduction)
 {
-    connectionString = ProductionSqlConnectionSecurity.Harden(connectionString);
+    connectionString = ProductionSqlConnectionSecurity.Harden(
+        connectionString,
+        productionSqlTransport);
 }
 
 builder.Services.AddDbContextPool<ApplicationDbContext>(options =>

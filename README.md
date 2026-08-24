@@ -102,6 +102,7 @@ Production values should come from environment variables or the host's secret st
 | Setting | Environment variable | Purpose |
 |---|---|---|
 | `ConnectionStrings:DefaultConnection` | `ConnectionStrings__DefaultConnection` | Monster MSSQL / SQL Server connection |
+| `SqlTransport:*` | `SqlTransport__AllowMonsterAspManagedCertificate`, `SqlTransport__MonsterAspHost` | Exact-host exception for MonsterASP's provider-managed SQL certificate; encryption remains mandatory |
 | `PublicOrigin` | `PublicOrigin` | Canonical HTTPS public URL; required in Production |
 | `AllowedHosts` | `AllowedHosts` | Exact public host names; wildcard values are rejected in Production |
 | `ForwardedHeaders:KnownProxies` | `ForwardedHeaders__KnownProxies__0` (and later indexes) | Exact trusted TLS-terminating proxy IPs; required in Production |
