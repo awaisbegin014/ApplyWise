@@ -14,6 +14,8 @@ If the hosting plan cannot meet these objectives, do not describe the service as
 
 ## Required monitors and alerts
 
+For the free-tier controlled beta, `.github/workflows/monitor-production.yml` runs from GitHub infrastructure every five minutes. It retries the live, readiness, and release probes, opens or updates a `production-monitor` incident issue on failure, and fails the workflow so the repository owner receives the configured GitHub Actions notification. A successful run closes the incident after recovery. This is a minimum-cost beta control; public launch still requires a second independent alert channel and a one-minute monitoring interval.
+
 Configure an external monitor from a region near the primary users:
 
 | Signal | Interval | Alert condition |

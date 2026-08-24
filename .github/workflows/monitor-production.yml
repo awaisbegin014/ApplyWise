@@ -1,0 +1,187 @@
+name: Monitor ApplyWise production
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: applywise-production-monitor
+  cancel-in-progress: true
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    env:
+      PRODUCTION_ORIGIN: https://applywise.runasp.net
+      INCIDENT_LABEL: production-monitor
+
+    steps:
+      - name: Probe production endpoints
+        id: probe
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p "$RUNNER_TEMP/applywise-monitor"
+          failures=()
+
+          probe() {
+            local label="$1"
+            local path="$2"
+            local attempts="$3"
+            local output="$RUNNER_TEMP/applywise-monitor/$label.json"
+
+            for attempt in $(seq 1 "$attempts"); do
+              if curl \
+                --fail \
+                --silent \
+                --show-error \
+                --location \
+                --max-time 20 \
+                --header "Accept: application/json" \
+                "$PRODUCTION_ORIGIN$path" \
+                --output "$output"; then
+                return 0
+              fi
+
+              if [ "$attempt" -lt "$attempts" ]; then
+                sleep 20
+              fi
+            done
+
+            failures+=("$label failed after $attempts attempt(s): $path")
+            return 0
+          }
+
+          probe live /health/live 2
+          probe ready /health/ready 3
+          probe release /health/release 2
+
+          if [ -s "$RUNNER_TEMP/applywise-monitor/release.json" ]; then
+            if ! jq -e '
+              .commit
+              and (.commit | test("^[0-9a-f]{40}$"))
+              and .schemaMigration
+              and (.securityBaseline == "2026-08-release-hardening-v2")
+            ' "$RUNNER_TEMP/applywise-monitor/release.json" > /dev/null; then
+              failures+=("release metadata is missing or does not match the hardened production baseline")
+            fi
+          fi
+
+          if ! curl \
+            --fail \
+            --silent \
+            --show-error \
+            --location \
+            --max-time 20 \
+            --header "Accept: text/html" \
+            "$PRODUCTION_ORIGIN/" \
+            --output "$RUNNER_TEMP/applywise-monitor/home.html"; then
+            failures+=("public home page is unavailable")
+          fi
+
+          if [ "${#failures[@]}" -eq 0 ]; then
+            echo "failed=false" >> "$GITHUB_OUTPUT"
+            summary="All production probes passed."
+          else
+            echo "failed=true" >> "$GITHUB_OUTPUT"
+            summary="$(printf '%s\n' "${failures[@]}")"
+          fi
+
+          delimiter="MONITOR_SUMMARY_$(date +%s)_$RANDOM"
+          {
+            echo "summary<<$delimiter"
+            echo "$summary"
+            echo "$delimiter"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Route incident or recovery
+        if: always()
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
+        env:
+          PROBE_FAILED: ${{ steps.probe.outputs.failed }}
+          PROBE_SUMMARY: ${{ steps.probe.outputs.summary }}
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const label = process.env.INCIDENT_LABEL;
+            const failed = process.env.PROBE_FAILED !== "false";
+            const summary = process.env.PROBE_SUMMARY || "The endpoint probe did not produce a summary.";
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            const timestamp = new Date().toISOString();
+
+            try {
+              await github.rest.issues.getLabel({ owner, repo, name: label });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              await github.rest.issues.createLabel({
+                owner,
+                repo,
+                name: label,
+                color: "B60205",
+                description: "Automated ApplyWise production availability incident"
+              });
+            }
+
+            const incidents = await github.paginate(github.rest.issues.listForRepo, {
+              owner,
+              repo,
+              state: "open",
+              labels: label,
+              per_page: 100
+            });
+            const openIncidents = incidents.filter(issue => !issue.pull_request);
+
+            if (failed) {
+              const body = [
+                `Production monitoring failed at ${timestamp}.`,
+                "",
+                "```text",
+                summary,
+                "```",
+                "",
+                `[Open failed monitoring run](${runUrl})`
+              ].join("\n");
+
+              if (openIncidents.length === 0) {
+                await github.rest.issues.create({
+                  owner,
+                  repo,
+                  title: "Production monitor: ApplyWise is unhealthy",
+                  body,
+                  labels: [label]
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number: openIncidents[0].number,
+                  body
+                });
+              }
+
+              core.setFailed(summary);
+              return;
+            }
+
+            for (const incident of openIncidents) {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: incident.number,
+                body: `Production recovered at ${timestamp}. [Open successful monitoring run](${runUrl})`
+              });
+              await github.rest.issues.update({
+                owner,
+                repo,
+                issue_number: incident.number,
+                state: "closed",
+                state_reason: "completed"
+              });
+            }
