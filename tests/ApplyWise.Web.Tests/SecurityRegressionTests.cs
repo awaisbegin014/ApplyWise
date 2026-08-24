@@ -6,6 +6,9 @@ using ApplyWise.Web.ViewModels.Settings;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Data.SqlClient;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Options;
+using System.Diagnostics;
 using System.Threading.RateLimiting;
 using Xunit;
 
@@ -13,6 +16,80 @@ namespace ApplyWise.Web.Tests;
 
 public sealed class SecurityRegressionTests
 {
+    [Fact]
+    public void Unknown_account_logins_use_a_bounded_dummy_password_verifier()
+    {
+        Assert.Contains(
+            typeof(ILoginTimingProtector),
+            ConstructorParameterTypes(typeof(LoginModel)));
+        var password = typeof(LoginModel.InputModel).GetProperty(nameof(LoginModel.InputModel.Password));
+        var maximumLength = Assert.Single(password!.GetCustomAttributes(typeof(StringLengthAttribute), inherit: true));
+        Assert.Equal(100, Assert.IsType<StringLengthAttribute>(maximumLength).MaximumLength);
+
+        var protector = new LoginTimingProtector(Options.Create(new PasswordHasherOptions
+        {
+            IterationCount = 1_000
+        }));
+        protector.VerifyDummyPassword("not-a-real-password");
+    }
+
+    [Fact]
+    public async Task Anonymous_identity_outcomes_share_a_minimum_response_floor()
+    {
+        foreach (var pageType in new[]
+                 {
+                     typeof(LoginModel),
+                     typeof(RegisterModel),
+                     typeof(RegisterConfirmationModel),
+                     typeof(ResetPasswordModel)
+                 })
+        {
+            Assert.Contains(
+                typeof(ILoginTimingProtector),
+                ConstructorParameterTypes(pageType));
+        }
+
+        var protector = new LoginTimingProtector(Options.Create(new PasswordHasherOptions
+        {
+            IterationCount = 1_000
+        }));
+        var startedAt = Stopwatch.GetTimestamp();
+        await protector.EnforceMinimumResponseTimeAsync(startedAt);
+        Assert.True(
+            Stopwatch.GetElapsedTime(startedAt) >= TimeSpan.FromMilliseconds(700),
+            "The anonymous identity response completed before the configured timing floor.");
+    }
+
+    [Fact]
+    public void Unconfirmed_login_and_recovery_shortcuts_are_timing_hardened()
+    {
+        var accountPages = Path.Combine(
+            FindRepositoryRoot(),
+            "src",
+            "ApplyWise.Web",
+            "Areas",
+            "Identity",
+            "Pages",
+            "Account");
+        var login = File.ReadAllText(Path.Combine(accountPages, "Login.cshtml.cs"));
+        var reset = File.ReadAllText(Path.Combine(accountPages, "ResetPassword.cshtml.cs"));
+        var confirmation = File.ReadAllText(Path.Combine(accountPages, "RegisterConfirmation.cshtml.cs"));
+
+        Assert.Contains("RequireConfirmedAccount", login, StringComparison.Ordinal);
+        Assert.Contains("VerifyDummyPassword", login, StringComparison.Ordinal);
+        Assert.Contains("EnforceMinimumResponseTimeAsync", login, StringComparison.Ordinal);
+        Assert.Contains("EnforceMinimumResponseTimeAsync", reset, StringComparison.Ordinal);
+        Assert.Contains("EnforceMinimumResponseTimeAsync", confirmation, StringComparison.Ordinal);
+        var credentialFinalization = confirmation.IndexOf(
+            "ResetPasswordAsync",
+            StringComparison.Ordinal);
+        var emailConfirmation = confirmation.IndexOf(
+            "ConfirmEmailAsync",
+            StringComparison.Ordinal);
+        Assert.True(credentialFinalization >= 0);
+        Assert.True(emailConfirmation > credentialFinalization);
+    }
+
     [Fact]
     public void Login_and_registration_use_the_account_security_rate_limit()
     {
@@ -30,13 +107,18 @@ public sealed class SecurityRegressionTests
         AssertInvalid(new RegisterModel.InputModel
         {
             FullName = "Candidate",
-            Gender = Models.ProfileGender.PreferNotToSay,
-            DateOfBirth = new DateOnly(2000, 1, 1),
             Email = "candidate@example.test",
             Password = password,
             ConfirmPassword = password
         });
         AssertInvalid(new ResetPasswordModel.InputModel
+        {
+            Email = "candidate@example.test",
+            Code = "123456",
+            Password = password,
+            ConfirmPassword = password
+        });
+        AssertInvalid(new RegisterConfirmationModel.InputModel
         {
             Email = "candidate@example.test",
             Code = "123456",
@@ -59,13 +141,18 @@ public sealed class SecurityRegressionTests
         AssertValidPassword(new RegisterModel.InputModel
         {
             FullName = "Candidate",
-            Gender = Models.ProfileGender.PreferNotToSay,
-            DateOfBirth = new DateOnly(2000, 1, 1),
             Email = "candidate@example.test",
             Password = password,
             ConfirmPassword = password
         });
         AssertValidPassword(new ResetPasswordModel.InputModel
+        {
+            Email = "candidate@example.test",
+            Code = "123456",
+            Password = password,
+            ConfirmPassword = password
+        });
+        AssertValidPassword(new RegisterConfirmationModel.InputModel
         {
             Email = "candidate@example.test",
             Code = "123456",
@@ -79,6 +166,31 @@ public sealed class SecurityRegressionTests
             ConfirmPassword = password,
             Code = "123456"
         });
+    }
+
+    [Fact]
+    public void Registration_does_not_collect_optional_demographics()
+    {
+        var inputProperties = typeof(RegisterModel.InputModel)
+            .GetProperties()
+            .Select(property => property.Name)
+            .ToArray();
+
+        Assert.DoesNotContain("Gender", inputProperties);
+        Assert.DoesNotContain("DateOfBirth", inputProperties);
+    }
+
+    [Fact]
+    public void Password_validation_message_describes_the_enforced_policy()
+    {
+        var attribute = new StrongPasswordAttribute();
+
+        Assert.Equal(PasswordRequirements.UserFacingSummary, attribute.ErrorMessage);
+        Assert.Contains(PasswordRequirements.MinimumLength.ToString(), attribute.ErrorMessage, StringComparison.Ordinal);
+        Assert.Contains(PasswordRequirements.RequiredUniqueCharacters.ToString(), attribute.ErrorMessage, StringComparison.Ordinal);
+        Assert.Contains("uppercase", attribute.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("lowercase", attribute.ErrorMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("number", attribute.ErrorMessage, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -114,22 +226,6 @@ public sealed class SecurityRegressionTests
     }
 
     [Fact]
-    public void Production_sql_transport_allows_an_explicit_private_ca_exception()
-    {
-        const string configured =
-            "Server=sql.example.test;Database=ApplyWise;User ID=applywise_app;Password=test-only;" +
-            "Encrypt=False;TrustServerCertificate=False";
-
-        var hardened = new SqlConnectionStringBuilder(
-            ProductionSqlConnectionSecurity.Harden(
-                configured,
-                allowUntrustedServerCertificate: true));
-
-        Assert.Equal(SqlConnectionEncryptOption.Mandatory, hardened.Encrypt);
-        Assert.True(hardened.TrustServerCertificate);
-    }
-
-    [Fact]
     public void Production_sql_transport_rejects_the_sa_login()
     {
         const string configured =
@@ -139,6 +235,77 @@ public sealed class SecurityRegressionTests
             () => ProductionSqlConnectionSecurity.Harden(configured));
 
         Assert.Contains("must not use the sa login", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Forwarded_transport_is_normalized_before_hsts_and_https_redirection()
+    {
+        var program = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(),
+            "src",
+            "ApplyWise.Web",
+            "Program.cs"));
+        var forwardedHeaders = program.IndexOf("app.UseForwardedHeaders();", StringComparison.Ordinal);
+        var hsts = program.IndexOf("app.UseHsts();", StringComparison.Ordinal);
+        var httpsRedirection = program.IndexOf("app.UseHttpsRedirection();", StringComparison.Ordinal);
+
+        Assert.True(forwardedHeaders >= 0);
+        Assert.True(hsts > forwardedHeaders);
+        Assert.True(httpsRedirection > forwardedHeaders);
+        Assert.Contains("options.HttpsPort = publicOriginUri!.Port", program, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("candidate@example.test?bcc=attacker@example.test")]
+    [InlineData("candidate@example.test&body=hidden")]
+    [InlineData("candidate@example.test#fragment")]
+    [InlineData("candidate@example.test\r\nBcc:attacker@example.test")]
+    public void Admin_reply_links_encode_the_complete_stored_address(string address)
+    {
+        var link = MailtoLinkBuilder.Build(address, "Re: Support request");
+
+        Assert.StartsWith("mailto:", link, StringComparison.Ordinal);
+        Assert.DoesNotContain("?bcc=", link, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("&body=", link, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("#fragment", link, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\r", link, StringComparison.Ordinal);
+        Assert.DoesNotContain("\n", link, StringComparison.Ordinal);
+        Assert.EndsWith("?subject=Re%3A%20Support%20request", link, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Admin_reply_subject_strips_decoded_header_line_breaks()
+    {
+        var link = MailtoLinkBuilder.Build(
+            "candidate@example.test",
+            "Re: Help\r\nBcc: attacker@example.test");
+
+        Assert.DoesNotContain("%0D", link, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("%0A", link, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(
+            "mailto:candidate%40example.test?subject=Re%3A%20Help%20%20Bcc%3A%20attacker%40example.test",
+            link);
+    }
+
+    [Theory]
+    [InlineData("candidate@example.test?bcc=attacker@example.test")]
+    [InlineData("candidate@example.test&body=hidden")]
+    [InlineData("candidate@example.test#fragment")]
+    [InlineData("candidate@example.test\r\nBcc:attacker@example.test")]
+    [InlineData("Candidate <candidate@example.test>")]
+    [InlineData("first@example.test,second@example.test")]
+    public void Contact_mailbox_normalization_rejects_non_mailbox_syntax(string address)
+    {
+        Assert.False(MailboxAddressNormalizer.TryNormalize(address, out _));
+    }
+
+    [Fact]
+    public void Contact_mailbox_normalization_accepts_one_plain_address()
+    {
+        Assert.True(MailboxAddressNormalizer.TryNormalize(
+            " candidate@example.test ",
+            out var normalized));
+        Assert.Equal("candidate@example.test", normalized);
     }
 
     [Fact]
@@ -306,5 +473,21 @@ public sealed class SecurityRegressionTests
         var results = new List<ValidationResult>();
         Validator.TryValidateObject(model, new ValidationContext(model), results, validateAllProperties: true);
         return results;
+    }
+
+    private static string FindRepositoryRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "ApplyWise.sln")))
+            {
+                return directory.FullName;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException("Could not locate the ApplyWise repository root.");
     }
 }

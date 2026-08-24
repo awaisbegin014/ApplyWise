@@ -22,10 +22,13 @@ public sealed class AdminDashboardViewModel
     public int TotalResumes { get; init; }
     public int TotalAnalyses { get; init; }
     public int TotalInterviews { get; init; }
+    public int TotalContactMessages { get; init; }
+    public int UnreadContactMessages { get; init; }
     public int FailedEventsInRange { get; init; }
     public IReadOnlyList<AdminUserRowViewModel> Users { get; init; } = [];
     public IReadOnlyList<AdminDailyActivityViewModel> DailyActivity { get; init; } = [];
     public IReadOnlyList<AdminFeatureUsageViewModel> FeatureUsage { get; init; } = [];
+    public IReadOnlyList<AdminContactPreviewViewModel> RecentContactMessages { get; init; } = [];
 
     public double ConfirmationRate => TotalUsers == 0 ? 0 : ConfirmedUsers * 100d / TotalUsers;
     public double OnboardingRate => TotalUsers == 0 ? 0 : CompletedOnboardingUsers * 100d / TotalUsers;
@@ -57,3 +60,12 @@ public sealed record AdminFeatureUsageViewModel(
     string Label,
     int Count,
     int UniqueUsers);
+
+public sealed record AdminContactPreviewViewModel(
+    long Id,
+    string FullName,
+    string Email,
+    string Topic,
+    string Subject,
+    DateTimeOffset CreatedAt,
+    bool IsRead);

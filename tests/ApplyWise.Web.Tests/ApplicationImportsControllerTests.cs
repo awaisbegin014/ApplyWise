@@ -3,6 +3,7 @@ using ApplyWise.Web.Controllers;
 using ApplyWise.Web.Data;
 using ApplyWise.Web.Models;
 using ApplyWise.Web.Services.Gmail;
+using ApplyWise.Web.Services.Security;
 using ApplyWise.Web.ViewModels.ApplicationImports;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
@@ -38,6 +39,34 @@ public sealed class ApplicationImportsControllerTests
         Assert.False((await scope.Db.GmailConnections.SingleAsync(
             item => item.UserId == OtherUserId))
             .AutoAddHighConfidenceApplications);
+    }
+
+    [Fact]
+    public async Task UpdateAutoAddPreference_ReloadsAfterLifecycleLockAndDoesNotReviveDeletedConnection()
+    {
+        var operationLocks = new BlockingApplicationLockProvider();
+        await using var scope = await CreateControllerScopeAsync(
+            _ => operationLocks);
+
+        var updateTask = scope.Controller.UpdateAutoAddPreference(
+            autoAddHighConfidenceApplications: true);
+        await operationLocks.Entered.WaitAsync(TimeSpan.FromSeconds(2));
+        try
+        {
+            var connection = await scope.Db.GmailConnections.SingleAsync(
+                item => item.UserId == UserId);
+            scope.Db.GmailConnections.Remove(connection);
+            await scope.Db.SaveChangesAsync();
+        }
+        finally
+        {
+            operationLocks.Release();
+        }
+
+        Assert.IsType<NotFoundResult>(await updateTask);
+        Assert.DoesNotContain(
+            await scope.Db.GmailConnections.ToListAsync(),
+            item => item.UserId == UserId);
     }
 
     [Fact]
@@ -150,7 +179,8 @@ public sealed class ApplicationImportsControllerTests
                 : null
         };
 
-    private static async Task<ControllerScope> CreateControllerScopeAsync()
+    private static async Task<ControllerScope> CreateControllerScopeAsync(
+        Func<ApplicationDbContext, IApplicationLockProvider>? createOperationLocks = null)
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -211,6 +241,7 @@ public sealed class ApplicationImportsControllerTests
             provider.GetRequiredService<UserManager<IdentityUser>>(),
             new UnusedGmailImportService(),
             processor,
+            createOperationLocks?.Invoke(db) ?? new ApplicationLockProvider(db),
             Options.Create(new GoogleIntegrationOptions()))
         {
             ControllerContext = new ControllerContext
@@ -252,6 +283,36 @@ public sealed class ApplicationImportsControllerTests
             HttpContext context,
             IDictionary<string, object> values)
         {
+        }
+    }
+
+    private sealed class BlockingApplicationLockProvider : IApplicationLockProvider
+    {
+        private readonly TaskCompletionSource _entered = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _release = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task Entered => _entered.Task;
+
+        public async Task<IAsyncDisposable?> TryAcquireAsync(
+            string resource,
+            TimeSpan timeout,
+            CancellationToken cancellationToken = default)
+        {
+            Assert.Equal($"gmail-user:{UserId}", resource);
+            _entered.TrySetResult();
+            await _release.Task.WaitAsync(cancellationToken);
+            return NoopLease.Instance;
+        }
+
+        public void Release() => _release.TrySetResult();
+
+        private sealed class NoopLease : IAsyncDisposable
+        {
+            public static NoopLease Instance { get; } = new();
+
+            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
         }
     }
 

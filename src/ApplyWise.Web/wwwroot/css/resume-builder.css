@@ -416,6 +416,11 @@ fieldset.aw-rb-form-section {
     flex-wrap: wrap;
 }
 
+.aw-rb-photo-controls > div:has(input[type="file"]:focus-visible) label[for="rb-profile-photo"] {
+    outline: 3px solid #93c5fd;
+    outline-offset: 2px;
+}
+
 .aw-rb-photo-actions .btn,
 .aw-rb-photo-remove {
     min-height: 30px;

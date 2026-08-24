@@ -6,8 +6,8 @@ namespace ApplyWise.Web.ViewModels.Profile;
 public class ProfileEditViewModel
 {
     [Required, StringLength(100, MinimumLength = 2), Display(Name = "Full name")] public string FullName { get; set; } = string.Empty;
-    public ProfileGender? Gender { get; set; }
-    [DataType(DataType.Date), Display(Name = "Date of birth")] public DateOnly? DateOfBirth { get; set; }
+    [Display(Name = "Gender (optional)")] public ProfileGender? Gender { get; set; }
+    [DataType(DataType.Date), Display(Name = "Date of birth (optional)")] public DateOnly? DateOfBirth { get; set; }
     [Display(Name = "Career stage")] public CareerStage? CareerStage { get; set; }
     [StringLength(180)] public string? Institution { get; set; }
     [StringLength(150), Display(Name = "Degree program")] public string? DegreeProgram { get; set; }

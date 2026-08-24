@@ -23,30 +23,81 @@ public sealed class ResumeStorageService : IResumeStorageService
 
     public string CreateRelativePath(string userId, string storedFileName)
     {
-        var absolutePath = ResolvePath(Path.Combine(userId, storedFileName));
-        return Path.GetRelativePath(_contentRoot, absolutePath);
+        EnsureSafePathSegment(userId, nameof(userId));
+        EnsureSafePathSegment(storedFileName, nameof(storedFileName));
+        return Path.Combine(userId, storedFileName);
     }
 
     public string ResolvePath(string relativePath)
     {
-        var candidate = Path.GetFullPath(Path.IsPathRooted(relativePath)
-            ? relativePath
-            : Path.Combine(_contentRoot, relativePath));
-        var rootWithSeparator = _storageRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-            + Path.DirectorySeparatorChar;
+        ArgumentException.ThrowIfNullOrWhiteSpace(relativePath);
 
-        if (!candidate.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase))
+        if (Path.IsPathRooted(relativePath))
         {
-            // Existing rows store paths relative to the content root. Also accept paths relative
-            // to the configured storage root so deployments can move storage without changing code.
-            candidate = Path.GetFullPath(Path.Combine(_storageRoot, relativePath));
+            var absoluteCandidate = Path.GetFullPath(relativePath);
+            if (IsInsideStorageRoot(absoluteCandidate)) return absoluteCandidate;
+        }
+        else
+        {
+            // Rows created before storage-root-relative keys were introduced used a
+            // path relative to ContentRoot. Preserve those rows while the configured
+            // storage location remains unchanged.
+            var legacyCandidate = Path.GetFullPath(Path.Combine(_contentRoot, relativePath));
+            if (IsInsideStorageRoot(legacyCandidate)) return legacyCandidate;
         }
 
-        if (!candidate.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase))
+        // A restored volume may have a different absolute root. Resume files always
+        // use the stable {userId}/{generatedFileName} layout, so safely rebase legacy
+        // absolute/content-root-relative rows onto the configured storage root.
+        var segments = relativePath
+            .Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries)
+            .Where(segment => segment is not "." and not "..")
+            .ToArray();
+        if (segments.Length < 2)
         {
-            throw new InvalidOperationException("The resume path is outside the private storage directory.");
+            throw new InvalidOperationException(
+                "The resume path is not a valid storage-relative key.");
         }
 
-        return candidate;
+        var userId = segments[^2];
+        var storedFileName = segments[^1];
+        EnsureSafePathSegment(userId, nameof(relativePath));
+        EnsureSafePathSegment(storedFileName, nameof(relativePath));
+        var rebasedCandidate = Path.GetFullPath(
+            Path.Combine(_storageRoot, userId, storedFileName));
+        if (!IsInsideStorageRoot(rebasedCandidate))
+        {
+            throw new InvalidOperationException(
+                "The resume path is outside the private storage directory.");
+        }
+
+        return rebasedCandidate;
+    }
+
+    private bool IsInsideStorageRoot(string candidate)
+    {
+        var comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+        var normalizedRoot = Path.TrimEndingDirectorySeparator(_storageRoot);
+        var normalizedCandidate = Path.TrimEndingDirectorySeparator(candidate);
+        var rootWithSeparator = normalizedRoot.EndsWith(Path.DirectorySeparatorChar)
+            ? normalizedRoot
+            : normalizedRoot + Path.DirectorySeparatorChar;
+        return normalizedCandidate.StartsWith(rootWithSeparator, comparison);
+    }
+
+    private static void EnsureSafePathSegment(string value, string parameterName)
+    {
+        if (string.IsNullOrWhiteSpace(value)
+            || value is "." or ".."
+            || value.Contains('/')
+            || value.Contains('\\')
+            || value.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+        {
+            throw new ArgumentException(
+                "Resume storage path segments must be non-empty file-name components.",
+                parameterName);
+        }
     }
 }

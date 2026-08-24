@@ -4,8 +4,7 @@
     ViewData["Title"] = Model.Succeeded ? "Email confirmed" : "Confirmation link problem";
 }
 
-<div class="aw-auth-shell aw-auth-shell-status aw-fade-in"
-     @if (Model.Succeeded) { <text>data-confirm-redirect="@Model.LoginUrl" data-confirm-redirect-seconds="5"</text> }>
+<div class="aw-auth-shell aw-auth-shell-status aw-fade-in">
     <section class="aw-auth-status-card aw-slide-up" aria-labelledby="email-confirmation-title">
         <span class="aw-auth-kicker"><svg class="ui-icon"><use href="#i-mail" /></svg>Email confirmation</span>
         <span class="aw-auth-status-icon @(Model.Succeeded ? "aw-auth-status-icon-success" : "aw-auth-status-icon-error")" aria-hidden="true">
@@ -23,11 +22,8 @@
 
         @if (Model.Succeeded)
         {
-            <div class="aw-auth-status-callout aw-auth-status-callout-success" role="status">
-                Taking you to login in <strong data-confirm-redirect-countdown>5</strong> seconds. You will still enter your password to sign in.
-            </div>
             <div class="aw-auth-status-actions">
-                <a class="btn btn-primary" href="@Model.LoginUrl">Continue to login now</a>
+                <a class="btn btn-primary" href="@Model.LoginUrl">Continue to login</a>
             </div>
         }
         else

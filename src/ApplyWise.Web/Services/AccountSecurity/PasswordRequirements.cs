@@ -6,6 +6,8 @@ public static class PasswordRequirements
 {
     public const int MinimumLength = 12;
     public const int RequiredUniqueCharacters = 4;
+    public static string UserFacingSummary =>
+        $"Use {MinimumLength} or more characters with uppercase and lowercase letters, a number, and at least {RequiredUniqueCharacters} different characters.";
 }
 
 [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field | AttributeTargets.Parameter)]
@@ -13,8 +15,7 @@ public sealed class StrongPasswordAttribute : ValidationAttribute
 {
     public StrongPasswordAttribute()
     {
-        ErrorMessage =
-            $"Use at least {PasswordRequirements.MinimumLength} characters with an uppercase letter, a lowercase letter, and a number.";
+        ErrorMessage = PasswordRequirements.UserFacingSummary;
     }
 
     public override bool IsValid(object? value)

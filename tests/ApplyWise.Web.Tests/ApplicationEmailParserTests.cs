@@ -15,7 +15,9 @@ public sealed class ApplicationEmailParserTests
             subject: "Your application was sent to Contoso",
             from: "jobs-noreply@linkedin.com",
             body: "Your application for Software Engineer at Contoso",
-            labels: ["INBOX"]);
+            labels: ["INBOX"],
+            authenticationResults:
+                "mx.google.com; dkim=pass header.i=@linkedin.com; dmarc=pass (p=REJECT) header.from=linkedin.com");
 
         var result = _parser.Parse(message);
 
@@ -34,7 +36,9 @@ public sealed class ApplicationEmailParserTests
             subject: "Application received - Data Analyst",
             from: "application-noreply@indeed.com",
             body: "Thank you for applying to Acme.",
-            labels: ["INBOX"]);
+            labels: ["INBOX"],
+            authenticationResults:
+                "mx.google.com; spf=pass smtp.mailfrom=indeed.com; dmarc=pass header.from=indeed.com");
 
         var result = _parser.Parse(message);
 
@@ -54,7 +58,9 @@ public sealed class ApplicationEmailParserTests
                 "Application submitted. Job Title: IT Intern – Internship. "
                 + "NKC SMC PVT LTD - Karachi. "
                 + "The following items were sent to NKC SMC PVT LTD. Good luck!",
-            labels: ["INBOX"]);
+            labels: ["INBOX"],
+            authenticationResults:
+                "mx.google.com; dkim=pass header.i=@indeed.com; dmarc=pass header.from=indeed.com");
 
         var result = _parser.Parse(message);
 
@@ -125,6 +131,74 @@ public sealed class ApplicationEmailParserTests
         Assert.True(result.Confidence < ApplicationImportPolicy.HighConfidenceThreshold);
     }
 
+    [Theory]
+    [InlineData("jobs-noreply@indeed.com, attacker@example.test")]
+    [InlineData("jobs-noreply@indeed.com\r\nBcc: attacker@example.test")]
+    [InlineData("not an email address")]
+    public void Parse_IncomingMessageWithAmbiguousOrInvalidFrom_ReturnsNull(string from)
+    {
+        var message = Message(
+            subject: "Indeed Application: Software Engineer",
+            from: from,
+            body: "Thank you for applying to Contoso.",
+            labels: ["INBOX"],
+            authenticationResults:
+                "mx.google.com; dmarc=pass header.from=indeed.com");
+
+        Assert.Null(_parser.Parse(message));
+    }
+
+    [Fact]
+    public void Parse_Trusted_domain_in_quoted_display_name_is_not_trusted()
+    {
+        var message = Message(
+            subject: "Indeed Application: Software Engineer",
+            from: "\"jobs@indeed.com\" <attacker@example.test>",
+            body: "Thank you for applying to Contoso.",
+            labels: ["INBOX"]);
+
+        var result = _parser.Parse(message);
+
+        Assert.True(
+            result is null
+            || result.Confidence < ApplicationImportPolicy.HighConfidenceThreshold);
+    }
+
+    [Fact]
+    public void Parse_TrustedFromWithoutGoogleAuthentication_RequiresReview()
+    {
+        var message = Message(
+            subject: "Indeed Application: Software Engineer",
+            from: "jobs-noreply@indeed.com",
+            body: "Thank you for applying to Contoso.",
+            labels: ["INBOX"]);
+
+        var result = _parser.Parse(message);
+
+        Assert.NotNull(result);
+        Assert.True(result.Confidence < ApplicationImportPolicy.HighConfidenceThreshold);
+    }
+
+    [Theory]
+    [InlineData("attacker.example; dmarc=pass header.from=indeed.com")]
+    [InlineData("mx.google.com; dmarc=fail header.from=indeed.com")]
+    [InlineData("mx.google.com; dmarc=pass header.from=attacker.example")]
+    public void Parse_UntrustedAuthenticationResult_RequiresReview(
+        string authenticationResults)
+    {
+        var message = Message(
+            subject: "Indeed Application: Software Engineer",
+            from: "jobs-noreply@indeed.com",
+            body: "Thank you for applying to Contoso.",
+            labels: ["INBOX"],
+            authenticationResults: authenticationResults);
+
+        var result = _parser.Parse(message);
+
+        Assert.NotNull(result);
+        Assert.True(result.Confidence < ApplicationImportPolicy.HighConfidenceThreshold);
+    }
+
     [Fact]
     public void Parse_SentMessageWithoutResume_ReturnsNull()
     {
@@ -144,7 +218,8 @@ public sealed class ApplicationEmailParserTests
         string body,
         IReadOnlyCollection<string> labels,
         string to = "candidate@example.com",
-        IReadOnlyCollection<string>? attachments = null) =>
+        IReadOnlyCollection<string>? attachments = null,
+        string authenticationResults = "") =>
         new(
             "message-1",
             "thread-1",
@@ -155,5 +230,6 @@ public sealed class ApplicationEmailParserTests
             body,
             labels,
             attachments ?? [],
-            new DateTimeOffset(2026, 7, 28, 12, 0, 0, TimeSpan.Zero));
+            new DateTimeOffset(2026, 7, 28, 12, 0, 0, TimeSpan.Zero),
+            authenticationResults);
 }

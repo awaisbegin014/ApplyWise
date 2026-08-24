@@ -9,8 +9,8 @@
         <p>Manage resume versions and track which file you use for each application.</p>
     </div>
     <div class="form-actions">
-        <a class="btn btn-secondary-soft" asp-controller="ResumeBuilder" asp-action="Index"><svg class="ui-icon"><use href="#i-edit-file" /></svg>Build Resume</a>
-        <a class="btn btn-primary" asp-action="Create">Upload Resume</a>
+        <a class="btn btn-secondary-soft" asp-controller="ResumeBuilder" asp-action="Index"><svg class="ui-icon"><use href="#i-edit-file" /></svg>Build resume</a>
+        <a class="btn btn-primary" asp-action="Create">Upload resume</a>
     </div>
 </div>
 
@@ -30,7 +30,7 @@
         <span class="empty-icon" aria-hidden="true"><svg class="ui-icon"><use href="#i-file" /></svg></span>
         <h3>No resumes yet</h3>
         <p>Upload your first resume version so ApplyWise can help you compare it with job requirements.</p>
-        <a class="btn btn-primary" asp-action="Create"><svg class="ui-icon"><use href="#i-plus" /></svg>Upload Resume</a>
+        <a class="btn btn-primary" asp-action="Create"><svg class="ui-icon"><use href="#i-plus" /></svg>Upload resume</a>
     </section>
 }
 else
@@ -69,7 +69,7 @@ else
                     @if (!resume.IsDefault)
                     {
                         <form asp-action="SetDefault" asp-route-id="@resume.Id" method="post">
-                            <button class="btn btn-sm btn-link" type="submit">Set Default</button>
+                            <button class="btn btn-sm btn-link" type="submit">Set default</button>
                         </form>
                     }
                     <a class="btn btn-sm btn-link text-danger" asp-action="Delete" asp-route-id="@resume.Id">Delete</a>

@@ -1650,6 +1650,8 @@
         let galleryPhotoDataUrl = '';
         let galleryPhotoPromise = null;
         let templatePreviewOpener = null;
+        let expandedPreviewOpener = null;
+        const previewInertRecords = [];
         const galleryBlobs = new Map();
         const galleryUrls = new Map();
         const galleryPromises = new Map();
@@ -2949,7 +2951,50 @@
             previewTimer = windowObject.setTimeout(refreshPreview, typeof delay === 'number' ? delay : 650);
         }
 
+        const renderFocusDataKeys = [
+            'action', 'field', 'bindPath', 'section', 'index', 'listPath',
+            'categoryIndex', 'skillIndex', 'sectionIndex', 'entryIndex', 'editorTab'
+        ];
+
+        function captureRenderFocus() {
+            const active = documentObject.activeElement;
+            if (!active || !root.contains(active)) return null;
+            const data = {};
+            renderFocusDataKeys.forEach(function (key) {
+                if (active.dataset && active.dataset[key] !== undefined) data[key] = active.dataset[key];
+            });
+            return { id: active.id || '', data: data };
+        }
+
+        function restoreRenderFocus(snapshot) {
+            if (!snapshot) return;
+            let target = snapshot.id ? documentObject.getElementById(snapshot.id) : null;
+            const focusable = Array.from(root.querySelectorAll(
+                'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'));
+            const keys = Object.keys(snapshot.data);
+            if (!target || !root.contains(target)) {
+                target = focusable.find(function (candidate) {
+                    return keys.length > 0 && keys.every(function (key) {
+                        return candidate.dataset && candidate.dataset[key] === snapshot.data[key];
+                    });
+                });
+            }
+            if (!target) {
+                const positionalKeys = new Set(['index', 'skillIndex', 'entryIndex']);
+                const stableKeys = keys.filter(function (key) { return !positionalKeys.has(key); });
+                const candidates = focusable.filter(function (candidate) {
+                    return stableKeys.length > 0 && stableKeys.every(function (key) {
+                        return candidate.dataset && candidate.dataset[key] === snapshot.data[key];
+                    });
+                });
+                const requestedIndex = Number(snapshot.data.index ?? snapshot.data.skillIndex ?? snapshot.data.entryIndex ?? 0);
+                target = candidates[Math.min(Math.max(requestedIndex, 0), candidates.length - 1)];
+            }
+            if (target && typeof target.focus === 'function') target.focus();
+        }
+
         function changed(rerender) {
+            const focusSnapshot = rerender ? captureRenderFocus() : null;
             revision += 1;
             latestBlobRevision = -1;
             latestPageCount = 0;
@@ -2964,6 +3009,40 @@
             updateValidation();
             scheduleSave();
             schedulePreview();
+            if (focusSnapshot && windowObject) {
+                const restore = function () { restoreRenderFocus(focusSnapshot); };
+                if (typeof windowObject.requestAnimationFrame === 'function') windowObject.requestAnimationFrame(restore);
+                else windowObject.setTimeout(restore, 0);
+            }
+        }
+
+        function setExpandedPreviewIsolation(panel, expanded) {
+            if (expanded) {
+                previewInertRecords.length = 0;
+                let current = panel;
+                while (current && current !== documentObject.body) {
+                    const parent = current.parentElement;
+                    if (!parent) break;
+                    Array.from(parent.children).forEach(function (sibling) {
+                        if (sibling === current || sibling.matches('[data-preview-backdrop]')) return;
+                        previewInertRecords.push([sibling, Boolean(sibling.inert)]);
+                        sibling.inert = true;
+                    });
+                    current = parent;
+                }
+                panel.setAttribute('role', 'dialog');
+                panel.setAttribute('aria-modal', 'true');
+                panel.setAttribute('aria-labelledby', 'rb-preview-title');
+                panel.setAttribute('aria-hidden', 'false');
+                return;
+            }
+
+            previewInertRecords.forEach(function (record) { record[0].inert = record[1]; });
+            previewInertRecords.length = 0;
+            panel.setAttribute('role', 'tabpanel');
+            panel.removeAttribute('aria-modal');
+            panel.setAttribute('aria-labelledby', 'rb-preview-tab');
+            onLayoutChange();
         }
 
         function notifyLimit(message) {
@@ -3206,6 +3285,7 @@
                 const panel = root.querySelector('[data-tab-panel="preview"]');
                 const backdrop = root.querySelector('[data-preview-backdrop]');
                 const expanded = panel ? !panel.classList.contains('is-expanded') : false;
+                if (expanded) expandedPreviewOpener = documentObject.activeElement;
                 if (panel) panel.classList.toggle('is-expanded', expanded);
                 if (backdrop) backdrop.hidden = !expanded;
                 root.classList.toggle('has-expanded-preview', expanded);
@@ -3214,7 +3294,14 @@
                 });
                 const label = root.querySelector('[data-preview-size-label]');
                 if (label) label.textContent = expanded ? 'Exit full screen' : 'Full screen';
-                if (expanded) schedulePreview(0);
+                if (panel) setExpandedPreviewIsolation(panel, expanded);
+                if (expanded) {
+                    schedulePreview(0);
+                    panel?.querySelector('[data-action="toggle-preview-size"]')?.focus();
+                } else if (expandedPreviewOpener && typeof expandedPreviewOpener.focus === 'function') {
+                    expandedPreviewOpener.focus();
+                    expandedPreviewOpener = null;
+                }
                 return;
             }
             if (action === 'add-custom-section') {
@@ -3371,13 +3458,28 @@
         }
 
         function onKeyDown(event) {
+            const expandedPreview = root.querySelector('.aw-rb-preview-panel.is-expanded');
+            if (expandedPreview && event.key === 'Tab') {
+                const focusable = Array.from(expandedPreview.querySelectorAll(
+                    'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), iframe, [tabindex]:not([tabindex="-1"])'))
+                    .filter(function (element) { return !element.hidden; });
+                if (focusable.length) {
+                    const first = focusable[0];
+                    const last = focusable[focusable.length - 1];
+                    if (event.shiftKey && documentObject.activeElement === first) {
+                        event.preventDefault();
+                        last.focus();
+                    } else if (!event.shiftKey && documentObject.activeElement === last) {
+                        event.preventDefault();
+                        first.focus();
+                    }
+                }
+            }
             if (event.key === 'Escape') {
-                const expandedPreview = root.querySelector('.aw-rb-preview-panel.is-expanded');
                 const backdrop = root.querySelector('[data-preview-backdrop]');
                 if (expandedPreview && backdrop) {
                     event.preventDefault();
                     handleAction(backdrop);
-                    root.querySelector('[data-action="toggle-preview-size"]')?.focus();
                     return;
                 }
             }

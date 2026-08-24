@@ -1,7 +1,7 @@
 @model string
 
 <nav class="analyzer-tabs aw-ra-tabs" aria-label="Resume analysis tools">
-    <a class="@(Model == "ats" ? "active" : null)" aria-current="@(Model == "ats" ? "page" : null)" asp-controller="ResumeAnalyzer" asp-action="Index" asp-route-mode="ats"><svg class="ui-icon" aria-hidden="true"><use href="#i-file" /></svg>ATS Resume Check</a>
-    <a class="@(Model == "job" ? "active" : null)" aria-current="@(Model == "job" ? "page" : null)" asp-controller="ResumeAnalyzer" asp-action="Index" asp-route-mode="job"><svg class="ui-icon" aria-hidden="true"><use href="#i-match" /></svg>Job Match</a>
-    <a class="@(Model == "picker" ? "active" : null)" aria-current="@(Model == "picker" ? "page" : null)" asp-controller="BestResumePicker" asp-action="Index"><svg class="ui-icon" aria-hidden="true"><use href="#i-match" /></svg>Best Resume Picker</a>
+    <a class="@(Model == "ats" ? "active" : null)" aria-current="@(Model == "ats" ? "page" : null)" asp-controller="ResumeAnalyzer" asp-action="Index" asp-route-mode="ats"><svg class="ui-icon" aria-hidden="true"><use href="#i-file" /></svg>ATS resume check</a>
+    <a class="@(Model == "job" ? "active" : null)" aria-current="@(Model == "job" ? "page" : null)" asp-controller="ResumeAnalyzer" asp-action="Index" asp-route-mode="job"><svg class="ui-icon" aria-hidden="true"><use href="#i-match" /></svg>Job match</a>
+    <a class="@(Model == "picker" ? "active" : null)" aria-current="@(Model == "picker" ? "page" : null)" asp-controller="BestResumePicker" asp-action="Index"><svg class="ui-icon" aria-hidden="true"><use href="#i-match" /></svg>Best resume picker</a>
 </nav>

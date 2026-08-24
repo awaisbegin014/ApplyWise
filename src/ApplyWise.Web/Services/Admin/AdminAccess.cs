@@ -75,7 +75,8 @@ public sealed class AdminRoleAssignmentService(
 {
     public async Task<bool> SynchronizeUserAsync(IdentityUser user)
     {
-        var shouldBeAdmin = options.Value.Contains(user.Email);
+        var shouldBeAdmin = user.EmailConfirmed
+            && options.Value.Contains(user.Email);
         var isAdmin = await userManager.IsInRoleAsync(user, AdminAccess.Role);
         if (shouldBeAdmin == isAdmin)
         {

@@ -28,6 +28,7 @@ public class ResumeAnalysis
     public string? ReviewJson { get; set; }
     public required string ResumeTextSnapshot { get; set; }
     public required string JobDescriptionSnapshot { get; set; }
+    public long SnapshotSizeBytes { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
 
     public IdentityUser? User { get; set; }

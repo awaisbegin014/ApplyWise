@@ -3,7 +3,7 @@
     ViewData["Title"] = "Delete Resume";
 }
 
-<div class="page-heading"><div><h1>Delete Resume</h1><p>Review this resume before removing it.</p></div></div>
+<div class="page-heading"><div><h1>Delete resume</h1><p>Review this resume before removing it.</p></div></div>
 
 <section class="panel confirmation-panel">
     <span class="danger-mark" aria-hidden="true">!</span>
@@ -14,7 +14,7 @@
         <div class="alert alert-warning">This is currently your default resume.</div>
     }
     <form asp-action="DeleteConfirmed" asp-route-id="@Model.Id" method="post" class="form-actions">
-        <button class="btn btn-danger" type="submit">Delete Resume</button>
+        <button class="btn btn-danger" type="submit">Delete resume</button>
         <a class="btn btn-outline-secondary" asp-action="Details" asp-route-id="@Model.Id">Cancel</a>
     </form>
 </section>

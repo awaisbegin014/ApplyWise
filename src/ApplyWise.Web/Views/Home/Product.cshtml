@@ -1,0 +1,129 @@
+@model ApplyWise.Web.ViewModels.Home.MarketingProductPageViewModel
+@{
+    ViewData["Title"] = Model.MetaTitle;
+    ViewData["MetaDescription"] = Model.MetaDescription;
+    var isAuthenticated = User.Identity?.IsAuthenticated == true;
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/home.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/product-pages.css" asp-append-version="true" />
+}
+
+<main id="main-content" class="aw-home aw-product-page aw-product-page-@Model.Accent" role="main">
+    <section class="aw-product-hero" aria-labelledby="product-page-title">
+        <div class="aw-home-container aw-product-hero-grid">
+            <div class="aw-product-hero-copy">
+                <nav class="aw-product-breadcrumb" aria-label="Breadcrumb">
+                    <a asp-controller="Home" asp-action="Index">Home</a>
+                    <span aria-hidden="true">/</span>
+                    <span aria-current="page">@Model.Eyebrow</span>
+                </nav>
+                <span class="aw-home-kicker aw-product-kicker">@Model.Eyebrow</span>
+                <h1 id="product-page-title">@Model.Title</h1>
+                <p class="aw-product-lead">@Model.Lead</p>
+                <div class="aw-product-actions" aria-label="Get started with @Model.Eyebrow">
+                    @if (isAuthenticated)
+                    {
+                        <a class="btn btn-primary btn-lg" asp-controller="@Model.ToolController" asp-action="@Model.ToolAction">@Model.ToolCtaLabel</a>
+                    }
+                    else
+                    {
+                        <a class="btn btn-primary btn-lg" asp-area="Identity" asp-page="/Account/Register">Create your free workspace</a>
+                    }
+                    <a class="btn btn-secondary-soft btn-lg" href="#what-it-does">See what it does</a>
+                </div>
+            </div>
+
+            <section class="aw-product-brief" aria-labelledby="product-definition-title">
+                <span class="aw-product-label">What it is</span>
+                <div class="aw-product-brief-icon" aria-hidden="true">
+                    <svg class="ui-icon"><use href="#@Model.Features[0].Icon" /></svg>
+                </div>
+                <h2 id="product-definition-title">@Model.DefinitionTitle</h2>
+                <p class="aw-product-brief-copy">@Model.Definition</p>
+                <dl class="aw-product-audience">
+                    <dt>Designed for</dt>
+                    <dd>@Model.DesignedFor</dd>
+                </dl>
+            </section>
+        </div>
+    </section>
+
+    <section class="aw-product-section" id="what-it-does" aria-labelledby="product-features-title">
+        <div class="aw-home-container">
+            <header class="aw-product-section-heading">
+                <span class="aw-home-kicker">What you can do</span>
+                <h2 id="product-features-title">Useful capabilities, explained plainly.</h2>
+                <p>Each part has a specific job in your workflow&mdash;and keeps the final decision with you.</p>
+            </header>
+
+            <div class="aw-product-feature-grid">
+                @foreach (var feature in Model.Features)
+                {
+                    <article class="aw-product-feature-card">
+                        <div class="aw-product-feature-icon">
+                            <svg class="ui-icon" aria-hidden="true"><use href="#@feature.Icon" /></svg>
+                        </div>
+                        <h3>@feature.Title</h3>
+                        <p>@feature.Description</p>
+                    </article>
+                }
+            </div>
+        </div>
+    </section>
+
+    <section class="aw-product-section aw-product-steps-section" aria-labelledby="product-steps-title">
+        <div class="aw-home-container aw-product-steps-grid">
+            <header class="aw-product-section-heading">
+                <span class="aw-home-kicker">How it works</span>
+                <h2 id="product-steps-title">A simple, three-step flow.</h2>
+                <p>No hidden automation. You add the context, review the evidence, and decide what happens next.</p>
+            </header>
+
+            <ol class="aw-product-step-list">
+                @for (var index = 0; index < Model.Steps.Count; index++)
+                {
+                    var step = Model.Steps[index];
+                    <li>
+                        <span class="aw-product-step-number" aria-hidden="true">@(index + 1)</span>
+                        <div>
+                            <h3>@step.Title</h3>
+                            <p>@step.Description</p>
+                        </div>
+                    </li>
+                }
+            </ol>
+        </div>
+    </section>
+
+    <section class="aw-home-section aw-home-final-cta" aria-labelledby="product-cta-title">
+        <div class="aw-home-container">
+            <div class="aw-home-cta-card">
+                <div>
+                    <span class="aw-home-kicker">Your next step</span>
+                    <h2 id="product-cta-title">@Model.CtaTitle</h2>
+                    <p>@Model.CtaDescription</p>
+                </div>
+                <div class="aw-home-cta-actions">
+                    @if (isAuthenticated)
+                    {
+                        <a class="btn btn-primary btn-lg" asp-controller="@Model.ToolController" asp-action="@Model.ToolAction">@Model.ToolCtaLabel</a>
+                    }
+                    else
+                    {
+                        <a class="btn btn-primary btn-lg" asp-area="Identity" asp-page="/Account/Register">Create your free workspace</a>
+                        <a class="aw-home-sign-in-link" asp-area="Identity" asp-page="/Account/Login">Already have an account? Sign in</a>
+                    }
+                </div>
+                <p class="aw-home-cta-assurance"><span aria-hidden="true">&#10003;</span><span><strong>You remain in control.</strong> ApplyWise organizes your information and explains its estimates without applying or contacting employers for you.</span></p>
+            </div>
+        </div>
+    </section>
+</main>
+
+<partial name="_MarketingFooter" />
+
+@section Scripts {
+    <script src="~/js/home.js" asp-append-version="true"></script>
+}

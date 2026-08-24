@@ -1,5 +1,77 @@
 @model ApplyWise.Web.ViewModels.Profile.OnboardingViewModel
 @using ApplyWise.Web.Models
-@{ ViewData["Title"] = "Welcome to ApplyWise"; }
-<div class="aw-page aw-onboarding"><section class="aw-panel aw-form-panel"><span class="aw-kicker">Welcome to ApplyWise</span><h1>Let’s set up your workspace</h1><p>Share only what helps personalize your workspace. You can skip this and return anytime.</p><form method="post"><div asp-validation-summary="ModelOnly" class="validation-summary" role="alert"></div><div class="form-grid"><div class="form-grid-wide"><label asp-for="FullName" class="form-label"></label><input asp-for="FullName" class="form-control" /></div><div><label asp-for="CareerStage" class="form-label"></label><select asp-for="CareerStage" asp-items="Html.GetEnumSelectList<CareerStage>()" class="form-select"><option value="">Choose one</option></select></div><div><label asp-for="Institution" class="form-label"></label><input asp-for="Institution" class="form-control" /></div><div><label asp-for="DegreeProgram" class="form-label"></label><input asp-for="DegreeProgram" class="form-control" /></div><div><label asp-for="FieldOfStudy" class="form-label"></label><input asp-for="FieldOfStudy" class="form-control" /></div><div><label asp-for="GraduationYear" class="form-label"></label><input asp-for="GraduationYear" class="form-control" /></div><div class="form-grid-wide"><label asp-for="Skills" class="form-label"></label><textarea asp-for="Skills" class="form-control" rows="3" placeholder="Your strongest skills"></textarea></div></div><button class="btn btn-primary" type="submit">Continue to dashboard</button><button class="btn btn-link" name="Skip" value="true" type="submit">Skip for now</button></form></section></div>
-@section Scripts { <partial name="_ValidationScriptsPartial" /> }
+@{
+    ViewData["Title"] = "Welcome to ApplyWise";
+}
+
+<div class="aw-page aw-onboarding">
+    <section class="aw-panel aw-form-panel">
+        <span class="aw-kicker">Welcome to ApplyWise</span>
+        <h1>Let’s set up your workspace</h1>
+        <p>Share only what helps personalize your workspace. You can skip this and return anytime.</p>
+
+        <form method="post">
+            <div asp-validation-summary="ModelOnly" class="validation-summary" role="alert"></div>
+            <div class="form-grid">
+                <div class="form-grid-wide">
+                    <label asp-for="FullName" class="form-label"></label>
+                    <input asp-for="FullName" class="form-control" autocomplete="name" />
+                    <span asp-validation-for="FullName"></span>
+                </div>
+                <div>
+                    <label asp-for="CareerStage" class="form-label"></label>
+                    <select asp-for="CareerStage" asp-items="Html.GetEnumSelectList<CareerStage>()" class="form-select">
+                        <option value="">Choose one</option>
+                    </select>
+                </div>
+                <div>
+                    <label asp-for="Institution" class="form-label"></label>
+                    <input asp-for="Institution" class="form-control" />
+                </div>
+                <div>
+                    <label asp-for="DegreeProgram" class="form-label"></label>
+                    <input asp-for="DegreeProgram" class="form-control" />
+                </div>
+                <div>
+                    <label asp-for="FieldOfStudy" class="form-label"></label>
+                    <input asp-for="FieldOfStudy" class="form-control" />
+                </div>
+                <div>
+                    <label asp-for="GraduationYear" class="form-label"></label>
+                    <input asp-for="GraduationYear" class="form-control" />
+                </div>
+                <div class="form-grid-wide">
+                    <label asp-for="Skills" class="form-label"></label>
+                    <textarea asp-for="Skills" class="form-control" rows="3" placeholder="Your strongest skills"></textarea>
+                </div>
+
+                <div class="form-grid-wide">
+                    <strong>Optional personal details</strong>
+                    <p>Gender and date of birth stay private and do not affect job matches. Leave either field blank if you prefer.</p>
+                </div>
+                <div>
+                    <label asp-for="Gender" class="form-label"></label>
+                    <select asp-for="Gender" class="form-select">
+                        <option value="">Leave blank</option>
+                        <option value="Woman">Woman</option>
+                        <option value="Man">Man</option>
+                        <option value="NonBinary">Non-binary</option>
+                        <option value="PreferNotToSay">Prefer not to say</option>
+                    </select>
+                </div>
+                <div>
+                    <label asp-for="DateOfBirth" class="form-label"></label>
+                    <input asp-for="DateOfBirth" type="date" autocomplete="bday" max="@DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd")" class="form-control" />
+                    <span asp-validation-for="DateOfBirth"></span>
+                </div>
+            </div>
+
+            <button class="btn btn-primary" type="submit">Continue to dashboard</button>
+            <button class="btn btn-link" name="Skip" value="true" type="submit">Skip for now</button>
+        </form>
+    </section>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

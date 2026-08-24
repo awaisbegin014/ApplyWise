@@ -1,6 +1,7 @@
 using ApplyWise.Web.Data;
 using ApplyWise.Web.Models;
 using ApplyWise.Web.Services.Gmail;
+using ApplyWise.Web.Services.Security;
 using ApplyWise.Web.ViewModels.ApplicationImports;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -18,6 +19,7 @@ public sealed class ApplicationImportsController(
     UserManager<IdentityUser> userManager,
     IGmailImportService gmailImportService,
     IApplicationImportProcessor importProcessor,
+    IApplicationLockProvider operationLocks,
     IOptions<GoogleIntegrationOptions> googleOptions) : Controller
 {
     [HttpGet("")]
@@ -78,7 +80,7 @@ public sealed class ApplicationImportsController(
 
         return View(new ApplicationImportIndexViewModel
         {
-            GoogleIntegrationConfigured = googleOptions.Value.IsConfigured,
+            GoogleIntegrationConfigured = googleOptions.Value.IsGmailImportConfigured,
             AutoAddHighConfidenceApplications =
                 connection?.AutoAddHighConfidenceApplications ?? false,
             GmailConnection = connection,
@@ -93,11 +95,25 @@ public sealed class ApplicationImportsController(
         bool autoAddHighConfidenceApplications)
     {
         var userId = GetUserId();
+        await using var operationLease = await operationLocks.TryAcquireAsync(
+            $"gmail-user:{userId}",
+            Timeout.InfiniteTimeSpan,
+            HttpContext.RequestAborted)
+            ?? throw new ResourceLockUnavailableException(
+                "The Gmail connection could not be locked while changing its preferences.");
+
+        dbContext.ChangeTracker.Clear();
         var connection = await dbContext.GmailConnections
             .SingleOrDefaultAsync(
                 item => item.UserId == userId,
                 HttpContext.RequestAborted);
         if (connection is null) return NotFound();
+        if (connection.LastErrorCode == GmailConnectionStates.RevocationPending)
+        {
+            TempData["ImportError"] =
+                "Gmail is being disconnected. Reconnect it before changing automatic tracking.";
+            return RedirectToAction(nameof(Index));
+        }
 
         connection.AutoAddHighConfidenceApplications =
             autoAddHighConfidenceApplications;

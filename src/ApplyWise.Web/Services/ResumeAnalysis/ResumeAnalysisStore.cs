@@ -6,7 +6,6 @@ using ApplyWise.Web.Data;
 using ApplyWise.Web.Models;
 using Microsoft.EntityFrameworkCore;
 using ResumeAnalysisEntity = ApplyWise.Web.Models.ResumeAnalysis;
-using ApplyWise.Web.Services.Security;
 
 namespace ApplyWise.Web.Services.ResumeAnalysis;
 
@@ -15,8 +14,7 @@ public sealed class ResumeAnalysisStore(
     IResumeTextNormalizer normalizer,
     ISkillTaxonomyService taxonomy,
     IResumeAnalysisService analysisService,
-    ILogger<ResumeAnalysisStore> logger,
-    IWorkspaceQuotaService? quotas = null) : IResumeAnalysisStore
+    ILogger<ResumeAnalysisStore> logger) : IResumeAnalysisStore
 {
     private const string ScoringConfigurationVersion = "ats-v3-evidence-layout-taxonomy-v2";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -61,12 +59,6 @@ public sealed class ResumeAnalysisStore(
             return new StoredResumeAnalysis(cached, cachedResult!, true);
         }
 
-        if (quotas is not null
-            && !await quotas.CanCreateAnalysisAsync(resume.UserId, cancellationToken))
-        {
-            throw new InvalidOperationException("Your workspace reached its saved-analysis limit. Delete old analyses before running another unique analysis.");
-        }
-
         var result = analysisService.Analyze(resumeText, normalizedJob, resume.PageCount, fileDiagnostics);
         logger.LogInformation(
             "Resume analysis store completed in {DurationMs:F3} ms. CacheHit={CacheHit}; ResumeChars={ResumeCharacters}; JobChars={JobCharacters}; Requirements={RequirementCount}; Matches={MatchCount}; ScoreVersion={ScoreVersion}; TaxonomyVersion={TaxonomyVersion}.",
@@ -87,8 +79,9 @@ public sealed class ResumeAnalysisStore(
             MatchedKeywordsJson = "[]",
             MissingKeywordsJson = "[]",
             SuggestionsJson = "[]",
-            ResumeTextSnapshot = resumeText,
+            ResumeTextSnapshot = string.Empty,
             JobDescriptionSnapshot = normalizedJob,
+            SnapshotSizeBytes = Encoding.Unicode.GetByteCount(normalizedJob),
             CreatedAt = DateTimeOffset.UtcNow
         };
         ApplyResult(analysis, result, inputHash);

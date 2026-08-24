@@ -203,6 +203,16 @@ html[data-theme=dark] .aw-status-count strong,html[data-theme=dark] .aw-pipeline
 /* Google identity and privacy-first Gmail application imports. */
 .aw-social-login-form{display:block;margin-bottom:14px}.aw-google-button{display:flex;width:100%;min-height:46px;align-items:center;justify-content:center;gap:10px;border:1px solid #cbd5e1!important;color:#1e293b!important;background:#fff!important;font-size:.82rem;font-weight:800;box-shadow:0 1px 2px rgba(15,23,42,.04)}.aw-google-button:hover{border-color:#94a3b8!important;background:#f8fafc!important}.aw-google-button:focus-visible{outline:3px solid #bfdbfe;outline-offset:2px}.aw-google-button svg{flex:0 0 20px;width:20px;height:20px}.aw-auth-divider{display:flex;align-items:center;gap:12px;margin:0 0 15px;color:#94a3b8;font-size:.65rem;font-weight:750;text-transform:uppercase;letter-spacing:.045em}.aw-auth-divider:before,.aw-auth-divider:after{height:1px;flex:1;background:#e2e8f0;content:""}.aw-auth-divider span{white-space:nowrap}
 .aw-settings-provider-row{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:0 0 16px;padding:13px;border:1px solid #dbe5f3;border-radius:11px;background:#f8fbff}.aw-settings-provider-row>span:first-child{display:grid;gap:3px}.aw-settings-provider-row strong{font-size:.84rem}.aw-settings-provider-row small{color:#718097;font-size:.7rem;line-height:1.4}
+
+/* Accessible secondary copy and visible proxy focus for visually hidden file inputs. */
+.aw-auth-divider,
+.aw-avatar-upload-form small,
+.aw-avatar-settings-actions > small,
+.aw-import-connect-action small,
+.aw-import-connected small,
+.aw-import-evidence dt,
+.aw-import-preference p { color:#526176 }
+.aw-avatar-upload-form-inline:has(input[type=file]:focus-visible) label[for=profile-photo]{outline:3px solid #93c5fd;outline-offset:2px}
 .aw-import-heading{align-items:flex-end}.aw-import-alert{margin:0 0 16px}.aw-import-error{color:#991b1b;border:1px solid #fecaca;background:#fff1f2}.aw-import-connection{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(280px,.7fr);align-items:center;gap:28px;margin-bottom:18px;padding:24px}.aw-import-connection-copy h2,.aw-import-section-heading h2,.aw-import-evidence h2{margin:5px 0 6px;font-size:1.25rem}.aw-import-connection-copy p,.aw-import-section-heading p,.aw-import-evidence>p{max-width:680px;margin:0;color:#64748b;font-size:.78rem;line-height:1.55}.aw-import-connect-action,.aw-import-connected{display:grid;justify-items:start;gap:8px;padding:16px;border:1px solid #dbe5f3;border-radius:14px;background:#f8fbff}.aw-import-connect-action form{width:100%}.aw-import-connect-action small,.aw-import-connected small{color:#718097;font-size:.68rem;line-height:1.45}.aw-import-config-note{color:#92400e;font-size:.75rem;line-height:1.5}.aw-import-status{display:inline-flex;padding:5px 9px;border-radius:99px;font-size:.62rem;font-weight:850;letter-spacing:.04em;text-transform:uppercase}.aw-import-status.is-connected{color:#047857;background:#d1fae5}.aw-import-status.is-warning{color:#92400e;background:#fef3c7}.aw-import-warning{color:#92400e!important}.aw-import-connection-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}.aw-import-connection-actions form{display:flex}.aw-import-review-panel{padding:24px}.aw-import-section-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:18px}.aw-import-count{padding:6px 10px;border-radius:99px;color:#1d4ed8;background:#dbeafe;font-size:.66rem;font-weight:850;white-space:nowrap}.aw-import-empty{padding:38px 20px}.aw-import-empty .ui-icon{width:32px;height:32px;color:#2563eb}.aw-import-list{display:grid;gap:10px}.aw-import-item{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:15px;border:1px solid #dbe5f3;border-radius:14px;background:#fbfdff}.aw-import-item-main{min-width:0}.aw-import-item-title{display:flex;flex-wrap:wrap;gap:5px;color:#334155;font-size:.86rem}.aw-import-item-title>span{color:#94a3b8}.aw-import-item-main>p{margin:6px 0 9px;overflow:hidden;color:#64748b;font-size:.71rem;text-overflow:ellipsis;white-space:nowrap}.aw-import-meta{display:flex;flex-wrap:wrap;gap:6px}.aw-import-meta span{padding:4px 7px;border-radius:7px;color:#52627a;background:#eef4ff;font-size:.6rem;font-weight:750}.aw-import-item-actions{display:flex;flex:0 0 auto;align-items:center;gap:7px}.aw-import-item-actions form{display:flex}.aw-import-review-grid{display:grid;grid-template-columns:minmax(260px,.38fr) minmax(0,.62fr);align-items:start;gap:18px}.aw-import-evidence,.aw-import-review-form{padding:22px}.aw-import-evidence dl{display:grid;gap:0;margin:18px 0}.aw-import-evidence dl>div{display:grid;gap:3px;padding:10px 0;border-top:1px solid #e2e8f0}.aw-import-evidence dt{color:#718097;font-size:.62rem;font-weight:800;text-transform:uppercase;letter-spacing:.045em}.aw-import-evidence dd{margin:0;color:#334155;font-size:.75rem;line-height:1.45;overflow-wrap:anywhere}.aw-import-review-form .form-grid{margin-bottom:18px}.aw-import-review-form .field-validation-error{display:block;margin-top:4px;color:#b91c1c;font-size:.68rem}
 html[data-theme=dark] .aw-import-connect-action,html[data-theme=dark] .aw-import-connected,html[data-theme=dark] .aw-import-item{border-color:#304057;background:#152033}html[data-theme=dark] .aw-import-connection-copy p,html[data-theme=dark] .aw-import-section-heading p,html[data-theme=dark] .aw-import-evidence>p,html[data-theme=dark] .aw-import-connect-action small,html[data-theme=dark] .aw-import-connected small,html[data-theme=dark] .aw-import-item-main>p{color:#aebed2}html[data-theme=dark] .aw-import-item-title,html[data-theme=dark] .aw-import-evidence dd{color:#d7e3f4}html[data-theme=dark] .aw-import-meta span{color:#bfdbfe;background:#203a69}html[data-theme=dark] .aw-import-evidence dl>div{border-color:#304057}
 html[data-theme=dark] .aw-settings-provider-row{border-color:#304057;background:#152033}html[data-theme=dark] .aw-settings-provider-row small{color:#aebed2}
@@ -211,3 +221,23 @@ html[data-theme=dark] .aw-settings-provider-row{border-color:#304057;background:
 .aw-import-preference{display:grid;width:100%;gap:9px;margin-top:7px;padding-top:14px;border-top:1px solid #dbe5f3}.aw-import-preference-control{display:flex;align-items:flex-start;gap:9px}.aw-import-preference-control .form-check-input{flex:0 0 auto;margin-top:2px}.aw-import-preference-control label{color:#334155;font-size:.75rem;font-weight:800;line-height:1.4}.aw-import-preference p{margin:0;color:#718097;font-size:.68rem;line-height:1.5}.aw-import-recent-panel{margin-bottom:18px}
 html[data-theme=dark] .aw-import-preference{border-color:#304057}html[data-theme=dark] .aw-import-preference-control label{color:#d7e3f4}html[data-theme=dark] .aw-import-preference p{color:#aebed2}
 @media(max-width:560px){.aw-import-preference .btn{width:100%}}
+
+/* Keep all instructional and metadata text at WCAG AA contrast on light surfaces. */
+.aw-auth-divider,
+.aw-auth-status-hint,
+.aw-avatar-upload-form small,
+.aw-avatar-settings-actions > small,
+.aw-import-connect-action small,
+.aw-import-connected small,
+.aw-import-evidence dt,
+.aw-import-preference p,
+.aw-status-job small { color:#526176!important }
+html[data-theme=dark] .aw-avatar-upload-form small,
+html[data-theme=dark] .aw-avatar-settings-actions > small,
+html[data-theme=dark] .aw-import-connect-action small,
+html[data-theme=dark] .aw-import-connected small,
+html[data-theme=dark] .aw-import-evidence dt,
+html[data-theme=dark] .aw-import-preference p,
+html[data-theme=dark] .aw-status-job small { color:#aebed2!important }
+
+.pagination-nav{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:.75rem;margin-top:1rem}.pagination-nav>span{color:#526176;font-weight:700}html[data-theme=dark] .pagination-nav>span{color:#aebed2}

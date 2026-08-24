@@ -3,103 +3,189 @@ using System.Text;
 using ApplyWise.Web.Data;
 using ApplyWise.Web.Models;
 using ApplyWise.Web.Services.Email;
+using ApplyWise.Web.Services.Security;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 
 namespace ApplyWise.Web.Services.AccountSecurity;
 
 public sealed class AccountSecurityCodeService(
     ApplicationDbContext db,
-    IApplicationEmailSender emailSender) : IAccountSecurityCodeService
+    IApplicationEmailSender emailSender,
+    IDataProtectionProvider dataProtectionProvider,
+    IWorkspaceQuotaGate quotaGate,
+    TimeProvider timeProvider) : IAccountSecurityCodeService
 {
     private const int MaximumAttempts = 5;
     private static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan AttemptBudgetWindow = TimeSpan.FromMinutes(15);
 
     public async Task<SecurityCodeIssueResult> IssueAsync(string userId, string email, AccountSecurityAction action,
         CancellationToken cancellationToken = default)
     {
-        var now = DateTimeOffset.UtcNow;
+        var prepared = await quotaGate.RunAsync(
+            GetQuotaResource(action),
+            userId,
+            operationCancellationToken => PrepareIssueAsync(
+                userId,
+                action,
+                operationCancellationToken),
+            cancellationToken);
+        if (!prepared.Result.Succeeded)
+        {
+            return prepared.Result;
+        }
+
+        try
+        {
+            await emailSender.SendAccountSecurityCodeAsync(email, action, prepared.Value!);
+        }
+        catch
+        {
+            await quotaGate.RunAsync(
+                GetQuotaResource(action),
+                userId,
+                async operationCancellationToken =>
+                {
+                    var failedRecord = await db.AccountSecurityCodes.SingleOrDefaultAsync(
+                        code => code.Id == prepared.CodeId,
+                        operationCancellationToken);
+                    if (failedRecord is not null)
+                    {
+                        db.AccountSecurityCodes.Remove(failedRecord);
+                        await db.SaveChangesAsync(operationCancellationToken);
+                    }
+
+                    return true;
+                },
+                cancellationToken);
+            throw;
+        }
+
+        return prepared.Result;
+    }
+
+    private async Task<PreparedSecurityCode> PrepareIssueAsync(
+        string userId,
+        AccountSecurityAction action,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
         var recent = await db.AccountSecurityCodes
-            .Where(code => code.UserId == userId && code.Action == action && code.ConsumedAt == null)
+            .Where(code => code.UserId == userId && code.Action == action)
             .OrderByDescending(code => code.CreatedAt)
             .FirstOrDefaultAsync(cancellationToken);
+        var attemptBudgetIsActive = recent is
+        {
+            FailedAttemptCount: > 0
+        } && recent.ExpiresAt > now;
+
+        if (attemptBudgetIsActive && recent!.FailedAttemptCount >= MaximumAttempts)
+        {
+            return PreparedSecurityCode.Failed(
+                "Too many incorrect attempts. Wait 15 minutes before requesting another code.");
+        }
 
         if (recent is not null && recent.CreatedAt > now.AddMinutes(-1))
         {
-            return new SecurityCodeIssueResult(false, "A code was sent recently. Please wait one minute before requesting another.");
+            return PreparedSecurityCode.Failed(
+                "A code was sent recently. Please wait one minute before requesting another.");
         }
 
-        var salt = RandomNumberGenerator.GetBytes(16);
-        var value = RandomNumberGenerator.GetInt32(100_000, 1_000_000).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var value = RandomNumberGenerator.GetInt32(100_000, 1_000_000)
+            .ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var activeRecords = await db.AccountSecurityCodes
+            .Where(code =>
+                code.UserId == userId
+                && code.Action == action
+                && code.ConsumedAt == null
+                && code.CreatedAt > now.Subtract(Lifetime))
+            .ToListAsync(cancellationToken);
+        foreach (var activeRecord in activeRecords)
+        {
+            activeRecord.ConsumedAt = now;
+        }
+
         var record = new AccountSecurityCode
         {
             UserId = userId,
             Action = action,
-            Salt = salt,
-            CodeHash = Hash(salt, value),
+            ProtectedCode = GetProtector(userId, action).Protect(Hash(value)),
+            FailedAttemptCount = attemptBudgetIsActive ? recent!.FailedAttemptCount : 0,
             CreatedAt = now,
-            ExpiresAt = now.Add(Lifetime)
+            ExpiresAt = attemptBudgetIsActive && recent!.ExpiresAt > now.Add(Lifetime)
+                ? recent.ExpiresAt
+                : now.Add(Lifetime)
         };
-
-        db.AccountSecurityCodes.RemoveRange(db.AccountSecurityCodes.Where(code =>
-            code.UserId == userId && code.Action == action && code.ConsumedAt == null));
         db.AccountSecurityCodes.Add(record);
         await db.SaveChangesAsync(cancellationToken);
 
-        try
-        {
-            await emailSender.SendAccountSecurityCodeAsync(email, action, value);
-        }
-        catch
-        {
-            db.AccountSecurityCodes.Remove(record);
-            await db.SaveChangesAsync(cancellationToken);
-            throw;
-        }
-
-        return new SecurityCodeIssueResult(true, action switch
+        var message = action switch
         {
             AccountSecurityAction.ConfirmEmail => "A six-digit verification code was sent to your email. It expires in 10 minutes.",
             AccountSecurityAction.ResetPassword => "A six-digit password reset code was sent to your email. It expires in 10 minutes.",
             _ => "A six-digit confirmation code was sent to your email. It expires in 10 minutes."
-        });
+        };
+        return new PreparedSecurityCode(
+            new SecurityCodeIssueResult(true, message),
+            record.Id,
+            value);
     }
 
     public async Task<SecurityCodeVerificationResult> VerifyAsync(string userId, AccountSecurityAction action, string? code,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        await quotaGate.RunAsync(
+            GetQuotaResource(action),
+            userId,
+            operationCancellationToken => VerifyCoreAsync(
+                userId,
+                action,
+                code,
+                operationCancellationToken),
+            cancellationToken);
+
+    private async Task<SecurityCodeVerificationResult> VerifyCoreAsync(
+        string userId,
+        AccountSecurityAction action,
+        string? code,
+        CancellationToken cancellationToken)
     {
         var normalizedCode = (code ?? string.Empty).Trim();
         var record = await db.AccountSecurityCodes
             .Where(item => item.UserId == userId && item.Action == action && item.ConsumedAt == null)
             .OrderByDescending(item => item.CreatedAt)
             .FirstOrDefaultAsync(cancellationToken);
+        var now = timeProvider.GetUtcNow();
 
-        if (record is null || record.ExpiresAt <= DateTimeOffset.UtcNow)
+        if (record is null || record.CreatedAt.Add(Lifetime) <= now)
         {
             return new SecurityCodeVerificationResult(false, null, "That code has expired. Request a new code and try again.");
         }
 
-        var reserved = await ReserveAttemptAsync(record, cancellationToken);
-        if (!reserved)
+        if (record.FailedAttemptCount >= MaximumAttempts && record.ExpiresAt > now)
         {
-            return new SecurityCodeVerificationResult(false, null, "Too many incorrect attempts. Request a new code and try again.");
+            return new SecurityCodeVerificationResult(false, null, "Too many incorrect attempts. Wait 15 minutes before trying again.");
         }
 
-        if (normalizedCode.Length != 6
-            || !CryptographicOperations.FixedTimeEquals(Hash(record.Salt, normalizedCode), record.CodeHash))
+        if (!IsSixAsciiDigits(normalizedCode) || !Matches(record, normalizedCode))
         {
+            record.FailedAttemptCount++;
+            var attemptBudgetExpiresAt = now.Add(AttemptBudgetWindow);
+            if (attemptBudgetExpiresAt > record.ExpiresAt)
+            {
+                record.ExpiresAt = attemptBudgetExpiresAt;
+            }
+
+            await db.SaveChangesAsync(cancellationToken);
             return new SecurityCodeVerificationResult(
                 false,
                 null,
                 "That code is not correct. Request a new code if you reach the attempt limit.");
         }
 
-        if (!await ConsumeVerifiedCodeAsync(record, cancellationToken))
-        {
-            return new SecurityCodeVerificationResult(
-                false,
-                null,
-                "That code has already been used. Request a new code and try again.");
-        }
+        record.FailedAttemptCount = 0;
+        record.ConsumedAt = now;
+        await db.SaveChangesAsync(cancellationToken);
 
         return new SecurityCodeVerificationResult(true, record.Id, string.Empty);
     }
@@ -108,65 +194,43 @@ public sealed class AccountSecurityCodeService(
     {
         var record = await db.AccountSecurityCodes.SingleOrDefaultAsync(code => code.Id == codeId, cancellationToken);
         if (record is null) return;
-        record.ConsumedAt = DateTimeOffset.UtcNow;
+        record.ConsumedAt ??= timeProvider.GetUtcNow();
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    private async Task<bool> ReserveAttemptAsync(
-        AccountSecurityCode record,
-        CancellationToken cancellationToken)
+    private bool Matches(AccountSecurityCode record, string value)
     {
-        if (!db.Database.IsRelational())
+        try
         {
-            if (record.FailedAttemptCount >= MaximumAttempts)
-            {
-                return false;
-            }
-
-            record.FailedAttemptCount++;
-            await db.SaveChangesAsync(cancellationToken);
-            return true;
+            var expected = GetProtector(record.UserId, record.Action).Unprotect(record.ProtectedCode);
+            return CryptographicOperations.FixedTimeEquals(Hash(value), expected);
         }
-
-        var now = DateTimeOffset.UtcNow;
-        var updatedRows = await db.AccountSecurityCodes
-            .Where(code =>
-                code.Id == record.Id
-                && code.ConsumedAt == null
-                && code.ExpiresAt > now
-                && code.FailedAttemptCount < MaximumAttempts)
-            .ExecuteUpdateAsync(
-                setters => setters.SetProperty(
-                    code => code.FailedAttemptCount,
-                    code => code.FailedAttemptCount + 1),
-                cancellationToken);
-        return updatedRows == 1;
+        catch (CryptographicException)
+        {
+            return false;
+        }
     }
 
-    private async Task<bool> ConsumeVerifiedCodeAsync(
-        AccountSecurityCode record,
-        CancellationToken cancellationToken)
+    private IDataProtector GetProtector(string userId, AccountSecurityAction action) =>
+        dataProtectionProvider
+            .CreateProtector("ApplyWise.AccountSecurityCode.v1")
+            .CreateProtector(userId)
+            .CreateProtector(action.ToString());
+
+    private static bool IsSixAsciiDigits(string value) =>
+        value.Length == 6 && value.All(char.IsAsciiDigit);
+
+    private static byte[] Hash(string value) => SHA256.HashData(Encoding.ASCII.GetBytes(value));
+
+    private static string GetQuotaResource(AccountSecurityAction action) =>
+        $"{WorkspaceQuotaResources.AccountSecurityCodes}:{action}";
+
+    private sealed record PreparedSecurityCode(
+        SecurityCodeIssueResult Result,
+        int CodeId,
+        string? Value)
     {
-        var consumedAt = DateTimeOffset.UtcNow;
-        if (!db.Database.IsRelational())
-        {
-            if (record.ConsumedAt is not null)
-            {
-                return false;
-            }
-
-            record.ConsumedAt = consumedAt;
-            await db.SaveChangesAsync(cancellationToken);
-            return true;
-        }
-
-        var updatedRows = await db.AccountSecurityCodes
-            .Where(code => code.Id == record.Id && code.ConsumedAt == null)
-            .ExecuteUpdateAsync(
-                setters => setters.SetProperty(code => code.ConsumedAt, consumedAt),
-                cancellationToken);
-        return updatedRows == 1;
+        public static PreparedSecurityCode Failed(string message) =>
+            new(new SecurityCodeIssueResult(false, message), 0, null);
     }
-
-    private static byte[] Hash(byte[] salt, string value) => SHA256.HashData(Encoding.UTF8.GetBytes(Convert.ToHexString(salt) + value));
 }

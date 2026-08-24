@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Mail;
 using System.Text.RegularExpressions;
 using ApplyWise.Web.Models;
 
@@ -14,7 +15,8 @@ public sealed record GmailMessageEnvelope(
     string Snippet,
     IReadOnlyCollection<string> LabelIds,
     IReadOnlyCollection<string> AttachmentFileNames,
-    DateTimeOffset SentAt);
+    DateTimeOffset SentAt,
+    string AuthenticationResults = "");
 
 public sealed record ApplicationImportSuggestion(
     ApplicationImportDirection Direction,
@@ -49,10 +51,15 @@ public sealed partial class ApplicationEmailParser : IApplicationEmailParser
         var body = WebUtility.HtmlDecode(message.Body);
         var searchable = $"{message.Subject}\n{message.Snippet}\n{body}";
         var hasResumeAttachment = message.AttachmentFileNames.Any(IsResumeFile);
-        var senderDomain = GetSenderDomain(
+        var senderDomain = GetMailboxDomain(
             direction == ApplicationImportDirection.Outgoing
                 ? message.To
-                : message.From);
+                : message.From,
+            requireSingle: direction == ApplicationImportDirection.Incoming);
+        if (senderDomain is null)
+        {
+            return null;
+        }
         var isVerifiedIndeedApplication =
             direction == ApplicationImportDirection.Incoming
             && IsIndeedDomain(senderDomain)
@@ -73,7 +80,8 @@ public sealed partial class ApplicationEmailParser : IApplicationEmailParser
 
         var source = DetectSource(searchable, message.From, direction);
         var trustedIncomingDomain = direction == ApplicationImportDirection.Incoming
-            && IsTrustedAutoAddDomain(senderDomain);
+            && IsTrustedAutoAddDomain(senderDomain)
+            && HasGoogleAuthenticatedFrom(message.AuthenticationResults, senderDomain);
         var (company, jobTitle) = ExtractCompanyAndTitle(message.Subject, body);
         company ??= CompanyFromDomain(senderDomain);
         var jobUrl = ExtractJobUrl(body);
@@ -214,10 +222,34 @@ public sealed partial class ApplicationEmailParser : IApplicationEmailParser
         return Math.Clamp(confidence, 0, maximum);
     }
 
-    private static string? GetSenderDomain(string from)
+    private static string? GetMailboxDomain(string headerValue, bool requireSingle)
     {
-        var match = EmailDomainRegex().Match(from);
-        return match.Success ? match.Groups["domain"].Value.ToLowerInvariant() : null;
+        if (string.IsNullOrWhiteSpace(headerValue)
+            || headerValue.Contains('\r')
+            || headerValue.Contains('\n'))
+        {
+            return null;
+        }
+
+        try
+        {
+            var addresses = new MailAddressCollection();
+            addresses.Add(headerValue);
+            if (addresses.Count == 0 || (requireSingle && addresses.Count != 1))
+            {
+                return null;
+            }
+
+            var address = addresses[0].Address;
+            var separator = address.LastIndexOf('@');
+            return separator > 0 && separator < address.Length - 1
+                ? address[(separator + 1)..].ToLowerInvariant()
+                : null;
+        }
+        catch (FormatException)
+        {
+            return null;
+        }
     }
 
     private static bool IsIndeedDomain(string? domain) =>
@@ -235,6 +267,42 @@ public sealed partial class ApplicationEmailParser : IApplicationEmailParser
         || IsDomainOrSubdomain(domain, "icims.com")
         || IsDomainOrSubdomain(domain, "jobvite.com")
         || IsDomainOrSubdomain(domain, "ashbyhq.com");
+
+    private static bool HasGoogleAuthenticatedFrom(
+        string authenticationResults,
+        string senderDomain)
+    {
+        if (string.IsNullOrWhiteSpace(authenticationResults)
+            || authenticationResults.Contains('\r')
+            || authenticationResults.Contains('\n'))
+        {
+            return false;
+        }
+
+        // Only trust the receiving Gmail boundary's result. A sender can add an
+        // Authentication-Results header of its own, so the authserv-id matters.
+        var segments = authenticationResults.Split(';', StringSplitOptions.TrimEntries);
+        if (segments.Length < 2
+            || !segments[0].Equals("mx.google.com", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        foreach (var segment in segments.Skip(1))
+        {
+            if (!DmarcPassRegex().IsMatch(segment)) continue;
+            var authenticatedFrom = HeaderFromRegex().Match(segment);
+            if (authenticatedFrom.Success
+                && authenticatedFrom.Groups["domain"].Value
+                    .TrimEnd('.')
+                    .Equals(senderDomain.TrimEnd('.'), StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private static bool IsDomainOrSubdomain(string? domain, string expected) =>
         !string.IsNullOrWhiteSpace(domain)
@@ -317,12 +385,15 @@ public sealed partial class ApplicationEmailParser : IApplicationEmailParser
     [GeneratedRegex(@"https?://[^\s""'<>]+", RegexOptions.IgnoreCase)]
     private static partial Regex UrlRegex();
 
-    [GeneratedRegex(@"(?<address>[\w.+-]+)@(?<domain>[\w.-]+\.[A-Za-z]{2,})", RegexOptions.IgnoreCase)]
-    private static partial Regex EmailDomainRegex();
-
     [GeneratedRegex(@"<[^>]+>")]
     private static partial Regex HtmlTagRegex();
 
     [GeneratedRegex(@"\s+")]
     private static partial Regex WhitespaceRegex();
+
+    [GeneratedRegex(@"(?i)\bdmarc\s*=\s*pass\b")]
+    private static partial Regex DmarcPassRegex();
+
+    [GeneratedRegex(@"(?i)\bheader\.from\s*=\s*(?<domain>[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?)")]
+    private static partial Regex HeaderFromRegex();
 }

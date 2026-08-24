@@ -9,11 +9,15 @@ using ApplyWise.Web.ViewModels.ResumeAnalyzer;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using ApplyWise.Web.Services.Monitoring;
+using ApplyWise.Web.Services.Security;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace ApplyWise.Web.Tests;
@@ -60,6 +64,10 @@ public sealed class ResumeAnalysisIntegrationTests
         Assert.Equal(created.Result.OverallScore, created.Analysis.MatchScore);
         Assert.NotNull(created.Analysis.ReviewJson);
         Assert.NotNull(created.Analysis.EvidenceJson);
+        Assert.Empty(created.Analysis.ResumeTextSnapshot);
+        Assert.Equal(
+            System.Text.Encoding.Unicode.GetByteCount(created.Analysis.JobDescriptionSnapshot),
+            created.Analysis.SnapshotSizeBytes);
     }
 
     [Fact]
@@ -80,11 +88,16 @@ public sealed class ResumeAnalysisIntegrationTests
         db.AddRange(skillsOnly, contextual, application);
         await db.SaveChangesAsync();
         var store = CreateStore(db);
+        var quotas = new WorkspaceQuotaService(
+            db,
+            Options.Create(new WorkspaceQuotaOptions()));
         var picker = new BestResumePickerService(
             db,
             new UnusedStorageService(),
             new UnusedTextExtractor(),
             store,
+            quotas,
+            new WorkspaceQuotaGate(db),
             NullLogger<BestResumePickerService>.Instance);
 
         var first = await picker.CompareResumesForJobAsync("owner", application.Id);
@@ -106,11 +119,16 @@ public sealed class ResumeAnalysisIntegrationTests
         var resume = CreateResume("owner", "Primary", ResumeWithExperience());
         db.Add(resume);
         await db.SaveChangesAsync();
+        var quotas = new WorkspaceQuotaService(
+            db,
+            Options.Create(new WorkspaceQuotaOptions()));
         var picker = new BestResumePickerService(
             db,
             new UnusedStorageService(),
             new UnusedTextExtractor(),
             CreateStore(db),
+            quotas,
+            new WorkspaceQuotaGate(db),
             NullLogger<BestResumePickerService>.Instance);
 
         var result = await picker.CompareResumesWithRequirementsAsync(
@@ -120,6 +138,37 @@ public sealed class ResumeAnalysisIntegrationTests
         Assert.False(result.HasDetectedSkills);
         Assert.Null(result.RecommendedResumeId);
         Assert.Null(result.RecommendationReason);
+    }
+
+    [Fact]
+    public async Task Best_resume_picker_rejects_the_whole_batch_when_remaining_quota_is_too_small()
+    {
+        await using var db = CreateDbContext();
+        var first = CreateResume("owner", "First", ResumeWithExperience());
+        var second = CreateResume("owner", "Second", ResumeWithSkillsOnly());
+        db.AddRange(first, second);
+        await db.SaveChangesAsync();
+        var quotas = new WorkspaceQuotaService(
+            db,
+            Options.Create(new WorkspaceQuotaOptions
+            {
+                MaxAnalysesPerUser = 1,
+                MaxAnalysisSnapshotBytesPerUser = 1024 * 1024
+            }));
+        var picker = new BestResumePickerService(
+            db,
+            new UnusedStorageService(),
+            new UnusedTextExtractor(),
+            CreateStore(db),
+            quotas,
+            new WorkspaceQuotaGate(db),
+            NullLogger<BestResumePickerService>.Instance);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            picker.CompareResumesWithRequirementsAsync("owner", JobDescription));
+
+        Assert.Contains("saved-analysis limit", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(await db.ResumeAnalyses.ToListAsync());
     }
 
     [Fact]
@@ -180,6 +229,8 @@ public sealed class ResumeAnalysisIntegrationTests
             new UnusedTextExtractor(),
             new UnusedIngestionService(),
             CreateStore(db),
+            new WorkspaceQuotaService(db, Options.Create(new WorkspaceQuotaOptions())),
+            new WorkspaceQuotaGate(db),
             new NoOpProductEventRecorder(),
             NullLogger<ResumeAnalyzerController>.Instance)
         {
@@ -208,6 +259,74 @@ public sealed class ResumeAnalysisIntegrationTests
         Assert.NotNull(pageModel.LatestResult);
         Assert.Equal(analysis.AtsReadinessScore, pageModel.LatestResult.AtsReadinessScore);
         Assert.False(pageModel.LatestResult.HasJobMatch);
+    }
+
+    [Fact]
+    public async Task Saved_resume_analysis_at_quota_redirects_with_feedback_instead_of_throwing()
+    {
+        const string userId = "quota-user";
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddControllersWithViews();
+        services.AddDbContext<ApplicationDbContext>(options =>
+            options.UseInMemoryDatabase("saved-ats-quota-" + Guid.NewGuid().ToString("N")));
+        services.AddIdentityCore<IdentityUser>()
+            .AddEntityFrameworkStores<ApplicationDbContext>();
+
+        await using var provider = services.BuildServiceProvider();
+        var db = provider.GetRequiredService<ApplicationDbContext>();
+        db.Users.Add(new IdentityUser { Id = userId, UserName = "quota@example.test" });
+        var resume = CreateResume(userId, "Quota", ResumeWithExperience());
+        db.Resumes.Add(resume);
+        await db.SaveChangesAsync();
+
+        var httpContext = new DefaultHttpContext
+        {
+            RequestServices = provider,
+            User = new ClaimsPrincipal(new ClaimsIdentity(
+                [new Claim(ClaimTypes.NameIdentifier, userId)],
+                authenticationType: "Test"))
+        };
+        var quotas = new WorkspaceQuotaService(
+            db,
+            Options.Create(new WorkspaceQuotaOptions
+            {
+                MaxAnalysesPerUser = 0,
+                MaxAnalysisSnapshotBytesPerUser = 0
+            }));
+        var controller = new ResumeAnalyzerController(
+            db,
+            provider.GetRequiredService<UserManager<IdentityUser>>(),
+            new UnusedStorageService(),
+            new UnusedTextExtractor(),
+            new UnusedIngestionService(),
+            CreateStore(db),
+            quotas,
+            new WorkspaceQuotaGate(db),
+            new NoOpProductEventRecorder(),
+            NullLogger<ResumeAnalyzerController>.Instance)
+        {
+            ControllerContext = new ControllerContext(
+                new ActionContext(
+                    httpContext,
+                    new RouteData(),
+                    new ControllerActionDescriptor()))
+        };
+
+        var action = await controller.AnalyzeSavedResumeAts(
+            new SavedAtsAnalysisViewModel { ResumeId = resume.Id });
+
+        var redirect = Assert.IsType<RedirectToActionResult>(action);
+        Assert.Equal(nameof(ResumeAnalyzerController.Index), redirect.ActionName);
+        Assert.Null(redirect.RouteValues);
+        Assert.Contains(
+            "saved-analysis limit",
+            Assert.IsType<string>(controller.TempData["AnalysisError"]),
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(await db.ResumeAnalyses.ToListAsync());
+        Assert.DoesNotContain(
+            db.ChangeTracker.Entries<ResumeAnalysis>(),
+            entry => entry.State == EntityState.Added);
     }
 
     private sealed class NoOpProductEventRecorder : IProductEventRecorder

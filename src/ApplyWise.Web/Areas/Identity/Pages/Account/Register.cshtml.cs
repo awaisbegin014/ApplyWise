@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 using ApplyWise.Web.Services.Monitoring;
 using ApplyWise.Web.Services.Admin;
+using ApplyWise.Web.Services.Security;
 
 namespace ApplyWise.Web.Areas.Identity.Pages.Account;
 
@@ -19,11 +20,15 @@ namespace ApplyWise.Web.Areas.Identity.Pages.Account;
 public class RegisterModel(
     UserManager<IdentityUser> userManager,
     SignInManager<IdentityUser> signInManager,
-    IAccountSecurityCodeService securityCodes,
+    IAccountSecurityRequestQueue securityRequests,
     ApplicationDbContext dbContext,
     IProductEventRecorder events,
     IAdminRoleAssignmentService adminRoles,
+    IPendingRegistrationStore pendingRegistrations,
+    ILoginTimingProtector timingProtector,
+    IOptions<AdminAccessOptions> adminOptions,
     IOptions<GoogleIntegrationOptions> googleOptions,
+    IHumanChallengeVerifier humanChallenge,
     ILogger<RegisterModel> logger) : PageModel
 {
     [BindProperty]
@@ -38,15 +43,6 @@ public class RegisterModel(
         [StringLength(100, MinimumLength = 2)]
         [Display(Name = "Full name")]
         public string FullName { get; set; } = string.Empty;
-
-        [Required]
-        [Display(Name = "Gender")]
-        public ProfileGender? Gender { get; set; }
-
-        [Required]
-        [DataType(DataType.Date)]
-        [Display(Name = "Date of birth")]
-        public DateOnly? DateOfBirth { get; set; }
 
         [Required]
         [EmailAddress]
@@ -70,32 +66,72 @@ public class RegisterModel(
 
     public async Task<IActionResult> OnPostAsync(string? returnUrl = null)
     {
+        var startedAt = System.Diagnostics.Stopwatch.GetTimestamp();
+        try
+        {
+            return await RegisterAsync(returnUrl);
+        }
+        finally
+        {
+            await timingProtector.EnforceMinimumResponseTimeAsync(
+                startedAt,
+                HttpContext.RequestAborted);
+        }
+    }
+
+    private async Task<IActionResult> RegisterAsync(string? returnUrl)
+    {
         returnUrl = GetSafeReturnUrl(returnUrl);
         ReturnUrl = returnUrl;
-
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        if (Input.DateOfBirth is { } dateOfBirth
-            && (dateOfBirth > today || dateOfBirth < today.AddYears(-120)))
-        {
-            ModelState.AddModelError(
-                "Input.DateOfBirth",
-                "Enter a valid date of birth that is not in the future.");
-        }
 
         if (!ModelState.IsValid)
         {
             return Page();
         }
 
-        var user = new IdentityUser { UserName = Input.Email, Email = Input.Email };
-        var result = await userManager.CreateAsync(user, Input.Password);
+        Input.Email = Input.Email.Trim();
+        Input.FullName = Input.FullName.Trim();
+        if (!await humanChallenge.VerifyAsync(
+                HttpContext,
+                HumanChallengeActions.Register,
+                HttpContext.RequestAborted))
+        {
+            ModelState.AddModelError(
+                string.Empty,
+                "Complete the human verification and try again.");
+            return Page();
+        }
 
-        if (result.Succeeded)
+        if (adminOptions.Value.Contains(Input.Email))
+        {
+            return ContinueToEmailVerification(returnUrl, queueDelivery: true);
+        }
+
+        var pendingRegistration = await pendingRegistrations.TryCreateAsync(
+            Input.Email,
+            Input.Password,
+            HttpContext.RequestAborted);
+        if (pendingRegistration.Status == PendingRegistrationStatus.Existing)
+        {
+            return ContinueToEmailVerification(returnUrl, queueDelivery: true);
+        }
+
+        if (pendingRegistration.Status == PendingRegistrationStatus.CapacityReached)
+        {
+            logger.LogWarning(
+                "A registration was not stored because the pending-account capacity was reached.");
+            return ContinueToEmailVerification(returnUrl, queueDelivery: true);
+        }
+
+        var user = pendingRegistration.User;
+        var result = pendingRegistration.IdentityResult;
+
+        if (result.Succeeded && user is not null)
         {
             logger.LogInformation("User created a new account with password.");
             var displayNameResult = await userManager.AddClaimAsync(
                 user,
-                new Claim("display_name", Input.FullName.Trim()));
+                new Claim("display_name", Input.FullName));
             if (!displayNameResult.Succeeded)
             {
                 await userManager.DeleteAsync(user);
@@ -113,18 +149,10 @@ public class RegisterModel(
                 dbContext.CareerProfiles.Add(new CareerProfile
                 {
                     UserId = user.Id,
-                    FullName = Input.FullName.Trim(),
-                    Gender = Input.Gender,
-                    DateOfBirth = Input.DateOfBirth,
-                    SelectedAvatarId = AvatarCatalog.GetDefaultAvatarId(Input.Gender),
+                    FullName = Input.FullName,
+                    SelectedAvatarId = AvatarCatalog.GeneralNeutralId,
                     CreatedAt = registeredAt,
                     UpdatedAt = registeredAt
-                });
-                dbContext.UserAccountActivities.Add(new UserAccountActivity
-                {
-                    UserId = user.Id,
-                    RegisteredAt = registeredAt,
-                    LastActivityAt = registeredAt
                 });
                 await dbContext.SaveChangesAsync();
                 await events.RecordAsync(
@@ -143,22 +171,7 @@ public class RegisterModel(
 
             if (userManager.Options.SignIn.RequireConfirmedAccount)
             {
-                try
-                {
-                    await securityCodes.IssueAsync(
-                        await userManager.GetUserIdAsync(user),
-                        Input.Email,
-                        AccountSecurityAction.ConfirmEmail,
-                        HttpContext.RequestAborted);
-                }
-                catch (Exception exception)
-                {
-                    logger.LogError(exception, "Could not deliver the initial email verification code.");
-                    TempData["ConfirmationDeliveryError"] =
-                        "Your account was created, but we could not send the verification code. Use 'Send a new code' to try again.";
-                }
-
-                return RedirectToPage("RegisterConfirmation", new { email = Input.Email, returnUrl });
+                return ContinueToEmailVerification(returnUrl, queueDelivery: true);
             }
 
             var isAdminAccount = await adminRoles.SynchronizeUserAsync(user)
@@ -169,9 +182,7 @@ public class RegisterModel(
                 : RedirectToAction("Index", "Onboarding");
         }
 
-        if (result.Errors.Any(error => error.Code is "DuplicateUserName" or "DuplicateEmail"))
-            ModelState.AddModelError(string.Empty, "An account may already exist for that email. Try logging in or use another address.");
-        else foreach (var error in result.Errors)
+        foreach (var error in result.Errors)
             ModelState.AddModelError(string.Empty, error.Description);
 
         return Page();
@@ -181,4 +192,30 @@ public class RegisterModel(
         !string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl)
             ? returnUrl
             : Url.Action("Index", "Onboarding") ?? "/onboarding";
+
+    private IActionResult ContinueToEmailVerification(
+        string returnUrl,
+        bool queueDelivery)
+    {
+        if (queueDelivery)
+        {
+            if (!securityRequests.TryQueue(
+                    Input.Email,
+                    AccountSecurityAction.ConfirmEmail))
+            {
+                Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+                Response.Headers.RetryAfter = "30";
+                ModelState.AddModelError(
+                    string.Empty,
+                    "Email delivery is busy. Wait 30 seconds and try again.");
+                return Page();
+            }
+        }
+
+        TempData["ConfirmationDeliveryMessage"] =
+            "If this address can be registered, a six-digit verification code will arrive shortly.";
+        return RedirectToPage(
+            "RegisterConfirmation",
+            new { email = Input.Email, returnUrl });
+    }
 }

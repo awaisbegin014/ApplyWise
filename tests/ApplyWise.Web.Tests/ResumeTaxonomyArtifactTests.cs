@@ -4,6 +4,7 @@ using ApplyWise.Web.Models;
 using ApplyWise.Web.Services.BestResumePicker;
 using ApplyWise.Web.Services.ResumeAnalysis;
 using ApplyWise.Web.Services.ResumeStorage;
+using ApplyWise.Web.Services.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
@@ -168,6 +169,8 @@ public sealed class ResumeTaxonomyArtifactTests(ITestOutputHelper output)
             new UnexpectedStorageService(),
             new UnexpectedTextExtractor(),
             store,
+            new WorkspaceQuotaService(db, Options.Create(new WorkspaceQuotaOptions())),
+            new WorkspaceQuotaGate(db),
             NullLogger<BestResumePickerService>.Instance);
 
         var firstWatch = Stopwatch.StartNew();

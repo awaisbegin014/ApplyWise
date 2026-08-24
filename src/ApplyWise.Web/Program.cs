@@ -14,12 +14,14 @@ using ApplyWise.Web.Services.Security;
 using ApplyWise.Web.Services.Gmail;
 using ApplyWise.Web.Services.Admin;
 using ApplyWise.Web.Services.Monitoring;
+using ApplyWise.Web.Services.Contact;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
 using System.Diagnostics;
@@ -36,6 +38,9 @@ if (PdfInspectionWorker.TryRun(args))
 
 var builder = WebApplication.CreateBuilder(args);
 var isProduction = builder.Environment.IsProduction();
+var requireConfirmedAccount = builder.Configuration.GetValue(
+    "Identity:RequireConfirmedAccount",
+    isProduction);
 
 // The default Windows Event Log provider requires elevated permissions and can
 // turn an otherwise harmless development warning into a failed HTTP request.
@@ -54,11 +59,18 @@ var resumeStorageRoot = builder.Configuration["ResumeStorage:RootPath"];
 var dataProtectionKeysPath = builder.Configuration["DataProtection:KeysPath"];
 var dataProtectionCertificatePath = builder.Configuration["DataProtection:CertificatePath"];
 var dataProtectionCertificatePassword = builder.Configuration["DataProtection:CertificatePassword"];
+var previousDataProtectionCertificates = builder.Configuration
+    .GetSection("DataProtection:PreviousCertificates")
+    .Get<DataProtectionCertificateReference[]>() ?? [];
 var smtpHost = builder.Configuration["Email:Host"];
 var smtpFrom = builder.Configuration["Email:From"];
 var connectionStringSetting = builder.Configuration.GetConnectionString("DefaultConnection");
-var allowUntrustedSqlServerCertificate =
-    builder.Configuration.GetValue<bool>("Database:AllowUntrustedServerCertificate");
+var globalPermitLimit = builder.Configuration.GetValue("RateLimiting:GlobalPermitLimit", 240);
+if (globalPermitLimit is < 60 or > 5_000)
+{
+    throw new InvalidOperationException(
+        "RateLimiting:GlobalPermitLimit must be between 60 and 5000 requests per client per minute.");
+}
 var slowRequestThreshold = TimeSpan.FromMilliseconds(Math.Clamp(
     builder.Configuration.GetValue("Performance:SlowRequestThresholdMs", 500),
     100,
@@ -69,16 +81,46 @@ var googleIntegration = builder.Configuration
 var configuredAdminEmails = builder.Configuration
     .GetSection($"{AdminAccessOptions.SectionName}:Emails")
     .Get<string[]>() ?? [];
+var requireAdminMfa = builder.Configuration.GetValue(
+    $"{AdminAccessOptions.SectionName}:RequireMfa",
+    true);
+var configuredKnownProxies = builder.Configuration
+    .GetSection("ForwardedHeaders:KnownProxies")
+    .Get<string[]>() ?? [];
+var humanChallenge = builder.Configuration
+    .GetSection(HumanChallengeOptions.SectionName)
+    .Get<HumanChallengeOptions>() ?? new HumanChallengeOptions();
 
 static bool IsUnset(string? value) => string.IsNullOrWhiteSpace(value) || value.Contains("__SET_", StringComparison.Ordinal);
-static bool IsHttpsOrigin(string? value) => Uri.TryCreate(value, UriKind.Absolute, out var uri)
-    && uri.Scheme == Uri.UriSchemeHttps && string.IsNullOrEmpty(uri.Query) && string.IsNullOrEmpty(uri.Fragment);
+static bool IsCanonicalHttpsOrigin(Uri? uri) => uri is not null
+    && uri.Scheme == Uri.UriSchemeHttps
+    && Uri.CheckHostName(uri.Host) == UriHostNameType.Dns
+    && !uri.IsLoopback
+    && !uri.Host.EndsWith(".localhost", StringComparison.OrdinalIgnoreCase)
+    && string.IsNullOrEmpty(uri.UserInfo)
+    && uri.AbsolutePath == "/"
+    && string.IsNullOrEmpty(uri.Query)
+    && string.IsNullOrEmpty(uri.Fragment);
+static bool IsExactHost(string host) => !string.IsNullOrWhiteSpace(host)
+    && !host.Contains('*', StringComparison.Ordinal)
+    && !host.StartsWith(".", StringComparison.Ordinal)
+    && Uri.CheckHostName(host) != UriHostNameType.Unknown;
+
+var publicOriginUri = Uri.TryCreate(publicOrigin, UriKind.Absolute, out var parsedPublicOrigin)
+    ? parsedPublicOrigin
+    : null;
+var configuredAllowedHosts = allowedHosts?
+    .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+    ?? [];
 
 if (isProduction &&
-    (IsUnset(connectionStringSetting)
-     || !IsHttpsOrigin(publicOrigin)
+    (!requireConfirmedAccount
+     || IsUnset(connectionStringSetting)
+     || !IsCanonicalHttpsOrigin(publicOriginUri)
      || IsUnset(allowedHosts)
-     || (allowedHosts?.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Any(host => host == "*") ?? true)
+     || configuredAllowedHosts.Length == 0
+     || configuredAllowedHosts.Any(host => !IsExactHost(host))
+     || !configuredAllowedHosts.Contains(publicOriginUri!.Host, StringComparer.OrdinalIgnoreCase)
      || IsUnset(smtpHost)
      || IsUnset(smtpFrom)
      || IsUnset(resumeStorageRoot)
@@ -88,10 +130,46 @@ if (isProduction &&
      || IsUnset(dataProtectionCertificatePath)
      || !Path.IsPathRooted(dataProtectionCertificatePath)
      || IsUnset(dataProtectionCertificatePassword)
-     || configuredAdminEmails.Length == 0))
+     || previousDataProtectionCertificates.Any(certificate =>
+         IsUnset(certificate.Path)
+         || !Path.IsPathRooted(certificate.Path)
+         || IsUnset(certificate.Password))
+     || !requireAdminMfa
+     || configuredAdminEmails.Length == 0
+     || configuredAdminEmails.Any(IsUnset)
+     || configuredKnownProxies.Length == 0
+     || configuredKnownProxies.Any(proxy =>
+         IsUnset(proxy) || !System.Net.IPAddress.TryParse(proxy, out _))
+     || !humanChallenge.Enabled
+     || IsUnset(humanChallenge.SiteKey)
+     || IsUnset(humanChallenge.SecretKey)
+     || !string.Equals(
+         humanChallenge.ExpectedHostname,
+         publicOriginUri!.Host,
+         StringComparison.OrdinalIgnoreCase)))
 {
     throw new InvalidOperationException(
-        "Production requires a non-sa SQL connection string, HTTPS PublicOrigin, exact AllowedHosts, SMTP settings, an administrator email allowlist, and absolute persistent paths for resume storage, Data Protection keys, and its encryption certificate.");
+        "Production requires a non-sa SQL connection string, a canonical HTTPS PublicOrigin represented in exact AllowedHosts, SMTP settings, an administrator email allowlist with MFA enforced, trusted reverse-proxy IPs, configured human verification for the public hostname, and absolute persistent paths for resume storage, Data Protection keys, and its encryption certificate.");
+}
+
+if (isProduction)
+{
+    ProductionPrivatePathSecurity.EnsureOutsideDeploymentRoot(
+        builder.Environment.ContentRootPath,
+        builder.Environment.WebRootPath,
+        resumeStorageRoot!,
+        dataProtectionKeysPath!,
+        dataProtectionCertificatePath!);
+    for (var index = 0; index < previousDataProtectionCertificates.Length; index++)
+    {
+        ProductionPrivatePathSecurity.EnsureSinglePathOutsideDeploymentRoot(
+            builder.Environment.ContentRootPath,
+            builder.Environment.WebRootPath,
+            $"DataProtection:PreviousCertificates:{index}:Path",
+            previousDataProtectionCertificates[index].Path);
+    }
+    builder.Services.AddHttpsRedirection(options =>
+        options.HttpsPort = publicOriginUri!.Port);
 }
 
 var resolvedDataProtectionKeysPath = Path.GetFullPath(
@@ -99,6 +177,8 @@ var resolvedDataProtectionKeysPath = Path.GetFullPath(
         ? dataProtectionKeysPath
         : Path.Combine(builder.Environment.ContentRootPath, dataProtectionKeysPath ?? Path.Combine("App_Data", "DataProtectionKeys")));
 Directory.CreateDirectory(resolvedDataProtectionKeysPath);
+builder.Services.AddSingleton(
+    new DataProtectionReadinessOptions(resolvedDataProtectionKeysPath));
 var dataProtectionBuilder = builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo(resolvedDataProtectionKeysPath))
     .SetApplicationName("ApplyWise");
@@ -123,7 +203,41 @@ if (!string.IsNullOrWhiteSpace(dataProtectionCertificatePath))
                 resolvedCertificatePath,
                 dataProtectionCertificatePassword,
                 X509KeyStorageFlags.EphemeralKeySet);
-        dataProtectionBuilder.ProtectKeysWithCertificate(certificate);
+        if (isProduction)
+        {
+            DataProtectionCertificateSecurity.EnsureProductionReady(
+                certificate,
+                DateTimeOffset.UtcNow);
+        }
+        var decryptionCertificates = new List<X509Certificate2> { certificate };
+        for (var index = 0; index < previousDataProtectionCertificates.Length; index++)
+        {
+            var previousReference = previousDataProtectionCertificates[index];
+            var resolvedPreviousPath = Path.GetFullPath(previousReference.Path);
+            if (!File.Exists(resolvedPreviousPath))
+            {
+                throw new InvalidOperationException(
+                    $"DataProtection:PreviousCertificates:{index}:Path was not found.");
+            }
+
+            var previousCertificate = Path.GetExtension(resolvedPreviousPath).Equals(
+                ".pem",
+                StringComparison.OrdinalIgnoreCase)
+                ? X509Certificate2.CreateFromEncryptedPemFile(
+                    resolvedPreviousPath,
+                    previousReference.Password,
+                    resolvedPreviousPath)
+                : X509CertificateLoader.LoadPkcs12FromFile(
+                    resolvedPreviousPath,
+                    previousReference.Password,
+                    X509KeyStorageFlags.EphemeralKeySet);
+            DataProtectionCertificateSecurity.EnsureCanDecrypt(previousCertificate);
+            decryptionCertificates.Add(previousCertificate);
+        }
+
+        dataProtectionBuilder
+            .ProtectKeysWithCertificate(certificate)
+            .UnprotectKeysWithAnyCertificate([.. decryptionCertificates]);
     }
     catch (CryptographicException exception)
     {
@@ -136,9 +250,7 @@ var connectionString = connectionStringSetting
     ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
 if (isProduction)
 {
-    connectionString = ProductionSqlConnectionSecurity.Harden(
-        connectionString,
-        allowUntrustedSqlServerCertificate);
+    connectionString = ProductionSqlConnectionSecurity.Harden(connectionString);
 }
 
 builder.Services.AddDbContextPool<ApplicationDbContext>(options =>
@@ -151,7 +263,7 @@ builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
 builder.Services.AddDefaultIdentity<IdentityUser>(options =>
     {
-        options.SignIn.RequireConfirmedAccount = builder.Configuration.GetValue("Identity:RequireConfirmedAccount", isProduction);
+        options.SignIn.RequireConfirmedAccount = requireConfirmedAccount;
         options.User.RequireUniqueEmail = true;
         options.Password.RequiredLength = PasswordRequirements.MinimumLength;
         options.Password.RequiredUniqueChars = PasswordRequirements.RequiredUniqueCharacters;
@@ -166,7 +278,7 @@ builder.Services.AddDefaultIdentity<IdentityUser>(options =>
     .AddEntityFrameworkStores<ApplicationDbContext>();
 if (googleIntegration.IsConfigured)
 {
-    builder.Services.AddAuthentication()
+    var authentication = builder.Services.AddAuthentication()
         .AddGoogle(
             GoogleDefaults.AuthenticationScheme,
             "Google",
@@ -184,8 +296,10 @@ if (googleIntegration.IsConfigured)
                         "/Identity/Account/Login?handler=ExternalLoginCallback&remoteError=oauth");
                     return Task.CompletedTask;
                 };
-            })
-        .AddGoogle(
+            });
+    if (googleIntegration.GmailImportEnabled)
+    {
+        authentication.AddGoogle(
             GmailAuthenticationDefaults.Scheme,
             GmailAuthenticationDefaults.DisplayName,
             options =>
@@ -224,6 +338,7 @@ if (googleIntegration.IsConfigured)
                     return Task.CompletedTask;
                 };
             });
+    }
 }
 builder.Services.ConfigureApplicationCookie(options =>
 {
@@ -233,7 +348,15 @@ builder.Services.ConfigureApplicationCookie(options =>
     options.SlidingExpiration = true;
 });
 builder.Services.AddControllersWithViews();
-builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database");
+var healthChecks = builder.Services.AddHealthChecks()
+    .AddCheck<DatabaseHealthCheck>("database", tags: ["ready"])
+    .AddCheck<DatabaseSchemaHealthCheck>("database_schema", tags: ["ready"])
+    .AddCheck<ResumeStorageHealthCheck>("resume_storage", tags: ["ready"])
+    .AddCheck<DataProtectionHealthCheck>("data_protection", tags: ["ready"]);
+if (isProduction)
+{
+    healthChecks.AddCheck<AdminOwnerHealthCheck>("admin_owner", tags: ["ready"]);
+}
 builder.Services.AddResponseCompression(options =>
 {
     options.EnableForHttps = true;
@@ -271,7 +394,7 @@ builder.Services.AddRateLimiter(options =>
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
         RequestRateLimitPartitions.CreateGlobal(
             context,
-            builder.Configuration.GetValue("RateLimiting:GlobalPermitLimit", 240)));
+            globalPermitLimit));
     options.AddPolicy("uploads", context => RateLimitPartition.GetFixedWindowLimiter(
         context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
             ?? context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
@@ -291,6 +414,20 @@ builder.Services.AddRateLimiter(options =>
         context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
             ?? context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 6, Window = TimeSpan.FromHours(1), QueueLimit = 0 }));
+    options.AddPolicy("scam-check", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+            ?? context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 20, Window = TimeSpan.FromHours(1), QueueLimit = 0 }));
+    options.AddPolicy("contact", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+            ?? context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 5,
+            Window = TimeSpan.FromMinutes(10),
+            QueueLimit = 0,
+            AutoReplenishment = true
+        }));
     options.AddPolicy("health", context => RateLimitPartition.GetFixedWindowLimiter(
         context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new FixedWindowRateLimiterOptions
@@ -327,21 +464,50 @@ builder.Services.AddOptions<AdminAccessOptions>()
     .ValidateOnStart();
 builder.Services.AddOptions<ProductEventRetentionOptions>()
     .Bind(builder.Configuration.GetSection(ProductEventRetentionOptions.SectionName))
-    .Validate(options => options.RetentionDays is >= 30 and <= 365,
-        "ProductEvents:RetentionDays must be between 30 and 365 days.")
+    .Validate(options => options.RetentionDays is >= 30 and <= 365
+            && options.MaxStoredEvents is >= 10_000 and <= 5_000_000,
+        "ProductEvents retention must be 30-365 days and capacity 10000-5000000 events.")
     .ValidateOnStart();
 builder.Services.AddOptions<WorkspaceQuotaOptions>()
     .Bind(builder.Configuration.GetSection(WorkspaceQuotaOptions.SectionName))
     .Validate(options => options.MaxApplicationsPerUser is >= 100 and <= 10_000
         && options.MaxInterviewsPerUser is >= 100 and <= 10_000
         && options.MaxAnalysesPerUser is >= 100 and <= 20_000
-        && options.MaxApplicationImportsPerUser is >= 100 and <= 20_000,
+        && options.MaxApplicationImportsPerUser is >= 100 and <= 20_000
+        && options.MaxScamChecksPerUser is >= 100 and <= 20_000
+        && options.MaxAnalysisSnapshotBytesPerUser is >= 5L * 1024 * 1024 and <= 1024L * 1024 * 1024,
         "Workspace quotas are outside safe bounds.")
+    .ValidateOnStart();
+builder.Services.AddOptions<ContactMessageStorageOptions>()
+    .Bind(builder.Configuration.GetSection(ContactMessageStorageOptions.SectionName))
+    .Validate(
+        options => options.RetentionDays is >= 30 and <= 730
+            && options.MaxStoredMessages is >= 100 and <= 100_000
+            && options.ReservedAuthenticatedSlots >= 0
+            && options.ReservedAuthenticatedSlots <= options.MaxStoredMessages - 100
+            && options.MaxUnreadPerAuthenticatedUser is >= 1 and <= 100,
+        "ContactMessages retention must be 30-730 days, storage cap 100-100000 messages, authenticated reserve must leave at least 100 anonymous slots, and per-account unread cap must be 1-100.")
+    .ValidateOnStart();
+builder.Services.AddOptions<PendingRegistrationOptions>()
+    .Bind(builder.Configuration.GetSection(PendingRegistrationOptions.SectionName))
+    .Validate(
+        options => options.RetentionDays is >= 1 and <= 30
+            && options.MaxPendingAccounts is >= 100 and <= 100_000,
+        "PendingRegistrations retention must be 1-30 days and capacity 100-100000 accounts.")
+    .ValidateOnStart();
+builder.Services.AddOptions<HumanChallengeOptions>()
+    .Bind(builder.Configuration.GetSection(HumanChallengeOptions.SectionName))
+    .Validate(
+        options => !options.Enabled
+            || (!string.IsNullOrWhiteSpace(options.SiteKey)
+                && !string.IsNullOrWhiteSpace(options.SecretKey)
+                && Uri.CheckHostName(options.ExpectedHostname) != UriHostNameType.Unknown),
+        "Enabled human verification requires a site key, secret key, and valid expected hostname.")
     .ValidateOnStart();
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-    foreach (var proxy in builder.Configuration.GetSection("ForwardedHeaders:KnownProxies").Get<string[]>() ?? [])
+    foreach (var proxy in configuredKnownProxies)
     {
         if (System.Net.IPAddress.TryParse(proxy, out var address)) options.KnownProxies.Add(address);
     }
@@ -349,15 +515,29 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 builder.Services.AddOptions<EmailOptions>()
     .Bind(builder.Configuration.GetSection(EmailOptions.SectionName))
     .Validate(options => options.Port is > 0 and <= 65535, "Email:Port must be between 1 and 65535.")
+    .Validate(
+        options => !isProduction || ProductionEmailConfiguration.IsReady(options),
+        "Production email requires a valid SMTP host and sender address, TLS, and either both or neither of username/password.")
     .ValidateOnStart();
 builder.Services.AddTransient<IEmailSender<IdentityUser>, SmtpEmailSender>();
 builder.Services.AddTransient<IApplicationEmailSender, SmtpEmailSender>();
+builder.Services.AddHttpClient<IHumanChallengeVerifier, TurnstileHumanChallengeVerifier>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(5);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("ApplyWise/1.0");
+});
 builder.Services.AddScoped<IAccountSecurityCodeService, AccountSecurityCodeService>();
+builder.Services.AddScoped<IPendingRegistrationStore, PendingRegistrationStore>();
+builder.Services.AddScoped<IPendingRegistrationRetention, PendingRegistrationRetention>();
+builder.Services.AddScoped<IAccountSecurityCodeRetention, AccountSecurityCodeRetention>();
+builder.Services.AddSingleton<ILoginTimingProtector, LoginTimingProtector>();
 builder.Services.AddSingleton<AccountSecurityRequestQueue>();
 builder.Services.AddSingleton<IAccountSecurityRequestQueue>(
     services => services.GetRequiredService<AccountSecurityRequestQueue>());
 builder.Services.AddHostedService(
     services => services.GetRequiredService<AccountSecurityRequestQueue>());
+builder.Services.AddHostedService<AccountSecurityCodeCleanupService>();
+builder.Services.AddHostedService<PendingRegistrationCleanupService>();
 builder.Services.AddScoped<IResumeTextExtractorService, ResumeTextExtractorService>();
 builder.Services.AddOptions<SkillTaxonomyOptions>()
     .Bind(builder.Configuration.GetSection("SkillTaxonomy"));
@@ -376,10 +556,15 @@ builder.Services.AddScoped<IDashboardReadService, DashboardReadService>();
 builder.Services.AddScoped<IProductEventRecorder, ProductEventRecorder>();
 builder.Services.AddScoped<IAdminDashboardService, AdminDashboardService>();
 builder.Services.AddScoped<IAdminUserReportService, AdminUserReportService>();
+builder.Services.AddScoped<IAdminContactMessageService, AdminContactMessageService>();
 builder.Services.AddScoped<IAdminRoleAssignmentService, AdminRoleAssignmentService>();
 builder.Services.AddScoped<IWorkspaceQuotaService, WorkspaceQuotaService>();
+builder.Services.AddScoped<IApplicationLockProvider, ApplicationLockProvider>();
+builder.Services.AddScoped<IWorkspaceQuotaGate, WorkspaceQuotaGate>();
+builder.Services.AddScoped<IContactMessageStore, ContactMessageStore>();
 builder.Services.AddScoped<IAuthorizationHandler, AdminMfaAuthorizationHandler>();
 builder.Services.AddHostedService<ProductEventCleanupService>();
+builder.Services.AddHostedService<ContactMessageCleanupService>();
 builder.Services.AddOptions<GoogleIntegrationOptions>()
     .Bind(builder.Configuration.GetSection(GoogleIntegrationOptions.SectionName))
     .Validate(
@@ -387,6 +572,9 @@ builder.Services.AddOptions<GoogleIntegrationOptions>()
                     && string.IsNullOrWhiteSpace(options.ClientSecret))
                    || options.IsConfigured,
         "Google ClientId and ClientSecret must either both be empty or contain a valid OAuth web client configuration.")
+    .Validate(
+        options => !options.GmailImportEnabled || options.IsConfigured,
+        "Gmail import can be enabled only when valid Google OAuth credentials are configured.")
     .Validate(
         options => options.GmailSyncIntervalMinutes is >= 5 and <= 1440
             && options.GmailInitialLookbackDays is >= 1 and <= 90
@@ -421,21 +609,25 @@ builder.Services.AddScoped<IResumeIngestionService, ResumeIngestionService>();
 
 var app = builder.Build();
 
-if (builder.Configuration.GetValue<bool>("Database:ApplyMigrationsOnStartup"))
-{
-    await using var migrationScope = app.Services.CreateAsyncScope();
-    var migrationLogger = migrationScope.ServiceProvider
-        .GetRequiredService<ILoggerFactory>()
-        .CreateLogger("DatabaseMigration");
-    migrationLogger.LogWarning("Applying pending database migrations before startup.");
-    var migrationDb = migrationScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    await migrationDb.Database.MigrateAsync();
-    migrationLogger.LogInformation("Database migrations are current.");
-}
+// Forwarded scheme and client information must be normalized before HSTS,
+// HTTPS redirection, authentication, and rate-limit partitioning inspect it.
+app.UseForwardedHeaders();
+
+// Pre-compute the dummy password hash so the first unknown-account login has
+// the same expensive verification work as later requests.
+_ = app.Services.GetRequiredService<ILoginTimingProtector>();
 
 await using (var adminScope = app.Services.CreateAsyncScope())
 {
     await AdminRoleSynchronizer.SynchronizeAsync(adminScope.ServiceProvider);
+    if (OwnerProvisioningCommand.IsRequested(args))
+    {
+        Environment.ExitCode = await OwnerProvisioningCommand.RunAsync(
+            adminScope.ServiceProvider,
+            app.Environment,
+            args);
+        return;
+    }
 }
 
 // Configure the HTTP request pipeline.
@@ -450,23 +642,42 @@ else
     app.UseHsts();
 }
 
-app.UseForwardedHeaders();
-app.UseHttpsRedirection();
+var resourceLockLogger = app.Services.GetRequiredService<ILoggerFactory>()
+    .CreateLogger("ResourceLockAdmission");
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next();
+    }
+    catch (ResourceLockUnavailableException exception)
+        when (!context.Response.HasStarted)
+    {
+        resourceLockLogger.LogWarning(
+            "A request to {Path} was rejected because a protected resource was busy: {Reason}",
+            context.Request.Path,
+            exception.Message);
+        context.Response.Clear();
+        context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+        context.Response.Headers.RetryAfter = "5";
+        context.Response.ContentType = "text/plain; charset=utf-8";
+        await context.Response.WriteAsync(
+            "This operation is busy. Wait a few seconds and try again.",
+            context.RequestAborted);
+    }
+});
+app.UseStatusCodePagesWithReExecute("/Home/StatusCode", "?code={0}");
+if (!app.Environment.IsDevelopment()
+    || string.Equals(publicOriginUri?.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+{
+    app.UseHttpsRedirection();
+}
 app.UseResponseCompression();
 var performanceLogger = app.Services.GetRequiredService<ILoggerFactory>()
     .CreateLogger("RequestPerformance");
 app.Use(async (context, next) =>
 {
     var startedAt = Stopwatch.GetTimestamp();
-    context.Response.OnStarting(() =>
-    {
-        var firstByteDuration = Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds;
-        context.Response.Headers.TryAdd(
-            "Server-Timing",
-            $"app;dur={firstByteDuration:F1}");
-        return Task.CompletedTask;
-    });
-
     await next();
 
     var duration = Stopwatch.GetElapsedTime(startedAt);
@@ -512,7 +723,31 @@ app.MapControllerRoute(
 
 app.MapRazorPages()
    .WithStaticAssets();
-app.MapHealthChecks("/health").RequireRateLimiting("health");
+app.MapHealthChecks("/health/live", new HealthCheckOptions
+{
+    Predicate = _ => false,
+    ResponseWriter = HealthResponseWriter.WriteAsync
+}).RequireRateLimiting("health");
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = registration => registration.Tags.Contains("ready"),
+    ResponseWriter = HealthResponseWriter.WriteAsync
+}).RequireRateLimiting("health");
+app.MapHealthChecks("/health", new HealthCheckOptions
+{
+    Predicate = registration => registration.Tags.Contains("ready"),
+    ResponseWriter = HealthResponseWriter.WriteAsync
+}).RequireRateLimiting("health");
+app.MapGet("/health/release", (
+    HttpContext context,
+    ApplicationDbContext dbContext) =>
+    {
+        context.Response.Headers.CacheControl = "no-store, max-age=0";
+        context.Response.Headers.Pragma = "no-cache";
+        return HealthResponseWriter.Release(app.Environment, dbContext);
+    })
+    .AllowAnonymous()
+    .RequireRateLimiting("health");
 
 app.Run();
 

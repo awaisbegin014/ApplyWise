@@ -1,5 +1,5 @@
 @model ApplyWise.Web.ViewModels.Interviews.InterviewEditViewModel
 @{ ViewData["Title"] = "Edit Interview"; }
-<div class="page-heading"><div><h1>Edit Interview</h1><p>Update the schedule, preparation, feedback, or outcome.</p></div></div>
-<form asp-action="Edit" asp-route-id="@Model.Id" method="post" class="application-form"><input asp-for="Id" type="hidden" /><partial name="_InterviewForm" model="Model" /><div class="form-actions"><button class="btn btn-primary" type="submit">Save Changes</button><a class="btn btn-outline-secondary" asp-action="Details" asp-route-id="@Model.Id">Cancel</a></div></form>
+<div class="page-heading"><div><h1>Edit interview</h1><p>Update the schedule, preparation, feedback, or outcome.</p></div></div>
+<form asp-action="Edit" asp-route-id="@Model.Id" method="post" class="application-form"><input asp-for="Id" type="hidden" /><partial name="_InterviewForm" model="Model" /><div class="form-actions"><button class="btn btn-primary" type="submit">Save changes</button><a class="btn btn-outline-secondary" asp-action="Details" asp-route-id="@Model.Id">Cancel</a></div></form>
 @section Scripts { <partial name="_ValidationScriptsPartial" /> }

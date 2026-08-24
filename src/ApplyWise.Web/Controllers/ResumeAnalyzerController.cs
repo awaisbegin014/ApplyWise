@@ -5,6 +5,7 @@ using ApplyWise.Web.Services.ResumeAnalysis;
 using ApplyWise.Web.Services.ResumeStorage;
 using ApplyWise.Web.ViewModels.ResumeAnalyzer;
 using ApplyWise.Web.Services.Monitoring;
+using ApplyWise.Web.Services.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -23,6 +24,8 @@ public class ResumeAnalyzerController(
     IResumeTextExtractorService textExtractor,
     IResumeIngestionService resumeIngestion,
     IResumeAnalysisStore analysisStore,
+    IWorkspaceQuotaService quotas,
+    IWorkspaceQuotaGate quotaGate,
     IProductEventRecorder events,
     ILogger<ResumeAnalyzerController> logger) : Controller
 {
@@ -114,13 +117,14 @@ public class ResumeAnalyzerController(
             ResumeAnalysisType.PastedRequirements,
             HttpContext.RequestAborted);
         var analysisId = await SaveStoredAnalysisAsync(stored);
+        if (!analysisId.HasValue) return RedirectToQuotaMessage();
         logger.LogInformation(
             "Resume analysis request completed. AnalysisId={AnalysisId}; CacheHit={CacheHit}; Source={AnalysisSource}.",
             analysisId,
             stored.IsCacheHit,
             ResumeAnalysisType.PastedRequirements);
 
-        return RedirectToAnalysis(analysisId);
+        return RedirectToAnalysis(analysisId.Value);
     }
 
     [HttpPost("analyze-saved-resume-ats")]
@@ -150,13 +154,14 @@ public class ResumeAnalyzerController(
             ResumeAnalysisType.PastedRequirements,
             HttpContext.RequestAborted);
         var analysisId = await SaveStoredAnalysisAsync(stored);
+        if (!analysisId.HasValue) return RedirectToQuotaMessage();
         logger.LogInformation(
             "Saved resume ATS check completed. AnalysisId={AnalysisId}; ResumeId={ResumeId}; CacheHit={CacheHit}.",
             analysisId,
             ownedResume.Id,
             stored.IsCacheHit);
 
-        return RedirectToAnalysis(analysisId);
+        return RedirectToAnalysis(analysisId.Value);
     }
 
     [HttpPost("analyze-ats-upload")]
@@ -209,13 +214,14 @@ public class ResumeAnalyzerController(
             ResumeAnalysisType.PastedRequirements,
             HttpContext.RequestAborted);
         var analysisId = await SaveStoredAnalysisAsync(stored);
+        if (!analysisId.HasValue) return RedirectToQuotaMessage();
         logger.LogInformation(
             "Direct ATS upload completed. AnalysisId={AnalysisId}; ResumeId={ResumeId}; CacheHit={CacheHit}.",
             analysisId,
             resume.Id,
             stored.IsCacheHit);
 
-        return RedirectToAnalysis(analysisId);
+        return RedirectToAnalysis(analysisId.Value);
     }
 
     [HttpPost("analyze-saved-application")]
@@ -268,13 +274,14 @@ public class ResumeAnalyzerController(
             ResumeAnalysisType.SavedApplication,
             HttpContext.RequestAborted);
         var analysisId = await SaveStoredAnalysisAsync(stored);
+        if (!analysisId.HasValue) return RedirectToQuotaMessage();
         logger.LogInformation(
             "Resume analysis request completed. AnalysisId={AnalysisId}; CacheHit={CacheHit}; Source={AnalysisSource}.",
             analysisId,
             stored.IsCacheHit,
             ResumeAnalysisType.SavedApplication);
 
-        return RedirectToAnalysis(analysisId);
+        return RedirectToAnalysis(analysisId.Value);
     }
 
     [HttpGet("history")]
@@ -303,9 +310,9 @@ public class ResumeAnalyzerController(
         return result is null ? NotFound() : View(result);
     }
 
-    private async Task<int> SaveStoredAnalysisAsync(StoredResumeAnalysis stored)
+    private async Task<int?> SaveStoredAnalysisAsync(StoredResumeAnalysis stored)
     {
-        try
+        if (stored.IsCacheHit)
         {
             await dbContext.SaveChangesAsync(HttpContext.RequestAborted);
             await events.RecordAsync(
@@ -315,27 +322,88 @@ public class ResumeAnalyzerController(
                 cancellationToken: HttpContext.RequestAborted);
             return stored.Analysis.Id;
         }
-        catch (DbUpdateException) when (!stored.IsCacheHit && !string.IsNullOrWhiteSpace(stored.Analysis.InputHash))
-        {
-            var candidate = stored.Analysis;
-            dbContext.ChangeTracker.Clear();
-            var existingId = await dbContext.ResumeAnalyses
-                .AsNoTracking()
-                .Where(item => item.UserId == candidate.UserId
-                    && item.ResumeId == candidate.ResumeId
-                    && item.JobApplicationId == candidate.JobApplicationId
-                    && item.AnalysisType == candidate.AnalysisType
-                    && item.InputHash == candidate.InputHash
-                    && item.ScoreVersion == candidate.ScoreVersion)
-                .Select(item => (int?)item.Id)
-                .FirstOrDefaultAsync(HttpContext.RequestAborted);
-            if (!existingId.HasValue) throw;
 
-            logger.LogInformation(
-                "A concurrent identical analysis was reused after the cache uniqueness check. AnalysisId={AnalysisId}.",
-                existingId.Value);
-            return existingId.Value;
+        var analysisId = await quotaGate.RunAsync(
+            WorkspaceQuotaResources.ResumeAnalyses,
+            stored.Analysis.UserId,
+            async cancellationToken =>
+            {
+                if (!string.IsNullOrWhiteSpace(stored.Analysis.InputHash))
+                {
+                    var existingId = await dbContext.ResumeAnalyses
+                        .AsNoTracking()
+                        .Where(item => item.UserId == stored.Analysis.UserId
+                            && item.ResumeId == stored.Analysis.ResumeId
+                            && item.JobApplicationId == stored.Analysis.JobApplicationId
+                            && item.AnalysisType == stored.Analysis.AnalysisType
+                            && item.InputHash == stored.Analysis.InputHash
+                            && item.ScoreVersion == stored.Analysis.ScoreVersion)
+                        .Select(item => (int?)item.Id)
+                        .FirstOrDefaultAsync(cancellationToken);
+                    if (existingId.HasValue)
+                    {
+                        dbContext.Entry(stored.Analysis).State = EntityState.Detached;
+                        await dbContext.SaveChangesAsync(cancellationToken);
+                        return existingId;
+                    }
+                }
+
+                if (!await quotas.CanCreateAnalysisAsync(
+                        stored.Analysis.UserId,
+                        stored.Analysis.SnapshotSizeBytes,
+                        cancellationToken))
+                {
+                    dbContext.Entry(stored.Analysis).State = EntityState.Detached;
+                    return null;
+                }
+
+                try
+                {
+                    await dbContext.SaveChangesAsync(cancellationToken);
+                    return (int?)stored.Analysis.Id;
+                }
+                catch (DbUpdateException) when (!string.IsNullOrWhiteSpace(stored.Analysis.InputHash))
+                {
+                    var candidate = stored.Analysis;
+                    dbContext.ChangeTracker.Clear();
+                    var existingId = await dbContext.ResumeAnalyses
+                        .AsNoTracking()
+                        .Where(item => item.UserId == candidate.UserId
+                            && item.ResumeId == candidate.ResumeId
+                            && item.JobApplicationId == candidate.JobApplicationId
+                            && item.AnalysisType == candidate.AnalysisType
+                            && item.InputHash == candidate.InputHash
+                            && item.ScoreVersion == candidate.ScoreVersion)
+                        .Select(item => (int?)item.Id)
+                        .FirstOrDefaultAsync(cancellationToken);
+                    if (!existingId.HasValue) throw;
+
+                    logger.LogInformation(
+                        "A concurrent identical analysis was reused after the cache uniqueness check. AnalysisId={AnalysisId}.",
+                        existingId.Value);
+                    return existingId;
+                }
+            },
+            HttpContext.RequestAborted);
+
+        if (!analysisId.HasValue)
+        {
+            return null;
         }
+
+        await events.RecordAsync(
+            ProductEventNames.ResumeAnalysisCompleted,
+            stored.Analysis.AnalysisType.ToString(),
+            stored.Analysis.UserId,
+            cancellationToken: HttpContext.RequestAborted);
+        return analysisId;
+    }
+
+    private IActionResult RedirectToQuotaMessage()
+    {
+        TempData["AnalysisError"] =
+            "Your workspace reached its saved-analysis limit. Delete an old analysis, then try again.";
+        return RedirectToAction(nameof(Index));
     }
 
     private async Task<Resume?> LoadOwnedResumeAsync(int? resumeId, string modelStateKey)
@@ -582,7 +650,9 @@ public class ResumeAnalyzerController(
                 ? $"{analysis.JobApplication!.JobTitle} at {analysis.JobApplication.CompanyName}"
                 : hasJobDescription ? "Pasted job requirements" : "ATS resume check",
             ContextSubtitle = isSavedApplication ? "Saved application" : hasJobDescription ? "Direct input" : "General readiness · no job description needed",
-            ResumeTextSnapshot = analysis.ResumeTextSnapshot,
+            ResumeTextSnapshot = !string.IsNullOrWhiteSpace(analysis.Resume?.ExtractedText)
+                ? analysis.Resume.ExtractedText
+                : analysis.ResumeTextSnapshot,
             JobDescriptionSnapshot = analysis.JobDescriptionSnapshot,
             OverallScore = analysis.MatchScore,
             AtsReadinessScore = analysis.AtsReadinessScore,

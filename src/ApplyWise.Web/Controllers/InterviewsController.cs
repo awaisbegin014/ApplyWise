@@ -17,7 +17,8 @@ public class InterviewsController(
     ApplicationDbContext dbContext,
     UserManager<IdentityUser> userManager,
     IProductEventRecorder events,
-    IWorkspaceQuotaService quotas) : Controller
+    IWorkspaceQuotaService quotas,
+    IWorkspaceQuotaGate quotaGate) : Controller
 {
     [HttpGet("")]
     public async Task<IActionResult> Index(string? filter)
@@ -83,8 +84,28 @@ public class InterviewsController(
         var now = DateTimeOffset.UtcNow;
         var interview = new Interview { UserId = userId, CreatedAt = now, UpdatedAt = now };
         ApplyForm(interview, model);
-        dbContext.Interviews.Add(interview);
-        await dbContext.SaveChangesAsync();
+        var saved = await quotaGate.RunAsync(
+            WorkspaceQuotaResources.Interviews,
+            userId,
+            async cancellationToken =>
+            {
+                if (!await quotas.CanCreateInterviewAsync(userId, cancellationToken))
+                {
+                    return false;
+                }
+
+                dbContext.Interviews.Add(interview);
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return true;
+            },
+            HttpContext.RequestAborted);
+        if (!saved)
+        {
+            ModelState.AddModelError(string.Empty, "Your workspace reached its interview limit. Delete old interviews before scheduling another.");
+            await PopulateApplicationsAsync(model);
+            return View(model);
+        }
+
         await events.RecordAsync(
             ProductEventNames.InterviewScheduled,
             "manual",

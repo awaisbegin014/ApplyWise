@@ -2,7 +2,7 @@ name: Validate release
 
 on:
   push:
-    branches: [ main ]
+    branches: [ master ]
   pull_request:
   workflow_dispatch:
 
@@ -12,34 +12,65 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
+    env:
+      APPLYWISE_SQL_INTEGRATION_TEST_CONNECTION: Server=localhost,1433;Database=ApplyWiseDb;User ID=sa;Password=ApplyWise-CI-Sql-42!;Encrypt=True;TrustServerCertificate=True
+      ConnectionStrings__DefaultConnection: Server=localhost,1433;Database=ApplyWiseDb;User ID=sa;Password=ApplyWise-CI-Sql-42!;Encrypt=True;TrustServerCertificate=True
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-CU26-ubuntu-22.04@sha256:ba4c8329f48fb8f02e1416be6a930ebfd71268caee78aa985f3af4315e457c89
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_SA_PASSWORD: ApplyWise-CI-Sql-42!
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'ApplyWise-CI-Sql-42!' -C -Q 'SELECT 1'"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+          --health-start-period 20s
 
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          dotnet-version: 10.0.x
-          cache: true
-          cache-dependency-path: '**/*.csproj'
+          persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
+        with:
+          dotnet-version: 10.0.400
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
 
       - name: Restore tools and packages
         run: |
           dotnet tool restore
-          dotnet restore ApplyWise.sln
+          dotnet restore ApplyWise.sln --locked-mode
 
       - name: Build release
         run: dotnet build ApplyWise.sln -c Release --no-restore
 
+      - name: Generate and apply the exact migration artifact
+        run: |
+          mkdir -p .artifacts
+          dotnet tool run dotnet-ef migrations script --idempotent --project src/ApplyWise.Web/ApplyWise.Web.csproj --startup-project src/ApplyWise.Web/ApplyWise.Web.csproj --configuration Release --no-build -o .artifacts/migrations.sql
+          docker exec ${{ job.services.sqlserver.id }} /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'ApplyWise-CI-Sql-42!' -C -b -d master -Q "IF DB_ID(N'ApplyWiseDb') IS NULL CREATE DATABASE [ApplyWiseDb]"
+          docker exec -i ${{ job.services.sqlserver.id }} /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'ApplyWise-CI-Sql-42!' -C -b -d ApplyWiseDb < .artifacts/migrations.sql
+
       - name: Run .NET tests
         run: dotnet test ApplyWise.sln -c Release --no-build --logger trx --results-directory TestResults
 
+      - name: Verify formatting
+        run: dotnet format ApplyWise.sln --verify-no-changes --no-restore
+
       - name: Run browser-side tests
         run: |
+          node --check src/ApplyWise.Web/wwwroot/js/home.js
+          node --check src/ApplyWise.Web/wwwroot/js/site.js
           node --check src/ApplyWise.Web/wwwroot/js/resume-builder.js
           node --check src/ApplyWise.Web/wwwroot/js/resume-analyzer.js
           node --test tests/resume-builder/resume-builder.test.cjs
@@ -48,21 +79,137 @@ jobs:
         run: dotnet tool run dotnet-ef migrations has-pending-model-changes --project src/ApplyWise.Web/ApplyWise.Web.csproj --startup-project src/ApplyWise.Web/ApplyWise.Web.csproj --configuration Release --no-build
 
       - name: Check dependency advisories
-        run: dotnet list ApplyWise.sln package --vulnerable --include-transitive
+        run: |
+          dotnet list ApplyWise.sln package --vulnerable --include-transitive --format json > .artifacts/vulnerabilities.json
+          if jq -e '.. | objects | select(has("vulnerabilities")) | .vulnerabilities | select(length > 0)' .artifacts/vulnerabilities.json > /dev/null; then
+            echo "A direct or transitive package has a known vulnerability."
+            exit 1
+          fi
 
       - name: Publish application
-        run: dotnet publish src/ApplyWise.Web/ApplyWise.Web.csproj -c Release --no-build -o .artifacts/publish
+        run: dotnet publish src/ApplyWise.Web/ApplyWise.Web.csproj -c Release --no-build -p:SourceRevisionId=${{ github.sha }} -o .artifacts/publish
 
-      - name: Generate migration artifact
-        run: dotnet tool run dotnet-ef migrations script --idempotent --project src/ApplyWise.Web/ApplyWise.Web.csproj --startup-project src/ApplyWise.Web/ApplyWise.Web.csproj --configuration Release --no-build -o .artifacts/migrations.sql
+      - name: Write release and schema provenance manifest
+        env:
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          migration_sha256="$(sha256sum .artifacts/migrations.sql | awk '{print $1}')"
+          payload_sha256="$(
+            (
+              cd .artifacts/publish
+              find . -type f ! -name 'release-manifest.json' -print0 |
+                while IFS= read -r -d '' file; do
+                  file_hash="$(sha256sum "$file" | awk '{print $1}')"
+                  normalized_file="$(printf '%s' "$file" | tr '[:upper:]' '[:lower:]')"
+                  printf '%s %s\n' "$file_hash" "$normalized_file"
+                done |
+                LC_ALL=C sort
+            ) | sha256sum | awk '{print $1}'
+          )"
+          schema_migration="$(find src/ApplyWise.Web/Migrations -maxdepth 1 -type f -regextype posix-extended -regex '.*/[0-9]+_.+\.cs' ! -name '*.Designer.cs' -printf '%f\n' | sort | tail -n 1 | sed 's/\.cs$//')"
+          test -n "$schema_migration"
+          jq -n \
+            --arg commit "$RELEASE_SHA" \
+            --arg securityBaseline "2026-08-release-hardening-v2" \
+            --arg migrationSha256 "$migration_sha256" \
+            --arg payloadSha256 "$payload_sha256" \
+            --arg schemaMigration "$schema_migration" \
+            '{commit: $commit, securityBaseline: $securityBaseline, migrationSha256: $migrationSha256, payloadSha256: $payloadSha256, schemaMigration: $schemaMigration}' \
+            > .artifacts/publish/release-manifest.json
 
-      - uses: actions/upload-artifact@v4
+      - name: Smoke-test the exact deployable payload
+        shell: bash
+        env:
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          smoke_root="$GITHUB_WORKSPACE/.artifacts/exact-payload-smoke"
+          runtime_log="$smoke_root/runtime.log"
+          mkdir -p "$smoke_root/resumes" "$smoke_root/data-protection"
+          (
+            cd .artifacts/publish
+            export ASPNETCORE_ENVIRONMENT=Development
+            export ASPNETCORE_URLS=http://127.0.0.1:18081
+            export ResumeStorage__RootPath="$smoke_root/resumes"
+            export DataProtection__KeysPath="$smoke_root/data-protection"
+            exec dotnet ApplyWise.Web.dll
+          ) > "$runtime_log" 2>&1 &
+          runtime_pid=$!
+          cleanup() {
+            kill "$runtime_pid" >/dev/null 2>&1 || true
+            wait "$runtime_pid" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          started=false
+          for attempt in $(seq 1 30); do
+            if ! kill -0 "$runtime_pid" >/dev/null 2>&1; then
+              cat "$runtime_log"
+              exit 1
+            fi
+            if curl --fail --silent --show-error http://127.0.0.1:18081/health/live > /dev/null; then
+              started=true
+              break
+            fi
+            sleep 2
+          done
+          if [ "$started" != true ]; then
+            cat "$runtime_log"
+            exit 1
+          fi
+
+          for route in / /Identity/Account/Login /Identity/Account/Register /contact /css/theme.css; do
+            curl --fail --silent --show-error "http://127.0.0.1:18081$route" > /dev/null || {
+              cat "$runtime_log"
+              exit 1
+            }
+          done
+          curl --fail --silent --show-error http://127.0.0.1:18081/health/ready > .artifacts/exact-payload-ready.json
+          curl --fail --silent --show-error http://127.0.0.1:18081/health/release > .artifacts/exact-payload-release.json
+          expected_migration="$(jq -r .schemaMigration .artifacts/publish/release-manifest.json)"
+          jq -e \
+            --arg commit "$RELEASE_SHA" \
+            --arg migration "$expected_migration" \
+            '.status == "Healthy" and .commit == $commit and .environment == "Development" and .securityBaseline == "2026-08-release-hardening-v2" and .schemaMigration == $migration' \
+            .artifacts/exact-payload-release.json > /dev/null
+
+      - name: Validate container definitions
+        env:
+          SA_PASSWORD: Example-Only-Sa-Password-42!
+          ADMIN_EMAIL: owner@example.test
+        run: |
+          docker compose config --quiet
+          docker build --target runtime --build-arg SOURCE_REVISION_ID=${{ github.sha }} --tag applywise-ci:${{ github.sha }} .
+
+      - name: Smoke-test the runtime image against migrated SQL
+        run: |
+          docker run --detach --name applywise-ci-runtime \
+            --publish 18080:8080 \
+            --add-host host.docker.internal:host-gateway \
+            --env ASPNETCORE_ENVIRONMENT=Development \
+            --env 'ConnectionStrings__DefaultConnection=Server=host.docker.internal,1433;Database=ApplyWiseDb;User ID=sa;Password=ApplyWise-CI-Sql-42!;Encrypt=True;TrustServerCertificate=True' \
+            applywise-ci:${{ github.sha }}
+          trap 'docker rm --force applywise-ci-runtime >/dev/null 2>&1 || true' EXIT
+          for attempt in $(seq 1 30); do
+            status="$(docker inspect --format='{{.State.Health.Status}}' applywise-ci-runtime 2>/dev/null || true)"
+            if [ "$status" = healthy ]; then break; fi
+            if [ "$status" = unhealthy ]; then docker logs applywise-ci-runtime; exit 1; fi
+            sleep 2
+          done
+          test "$(docker inspect --format='{{.State.Health.Status}}' applywise-ci-runtime)" = healthy
+          curl --fail --silent --show-error http://127.0.0.1:18080/health/ready > .artifacts/runtime-ready.json
+          curl --fail --silent --show-error http://127.0.0.1:18080/health/release > .artifacts/runtime-release.json
+          jq -e --arg commit "${{ github.sha }}" '.status == "Healthy" and .commit == $commit and .environment == "Development" and .securityBaseline == "2026-08-release-hardening-v2"' .artifacts/runtime-release.json > /dev/null
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: applywise-release
           path: |
             .artifacts/publish
             .artifacts/migrations.sql
+            .artifacts/exact-payload-*.json
+            .artifacts/exact-payload-smoke/runtime.log
             TestResults
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 90

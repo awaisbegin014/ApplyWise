@@ -2,6 +2,7 @@ using ApplyWise.Web.Data;
 using ApplyWise.Web.Models;
 using ApplyWise.Web.Services.ResumeAnalysis;
 using ApplyWise.Web.Services.ResumeStorage;
+using ApplyWise.Web.Services.Security;
 using ApplyWise.Web.ViewModels.Resumes;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -17,7 +18,8 @@ public class ResumesController(
     ApplicationDbContext dbContext,
     UserManager<IdentityUser> userManager,
     IResumeStorageService resumeStorage,
-    IResumeIngestionService resumeIngestion) : Controller
+    IResumeIngestionService resumeIngestion,
+    IWorkspaceQuotaGate quotaGate) : Controller
 {
     [HttpGet("")]
     public async Task<IActionResult> Index()
@@ -121,15 +123,23 @@ public class ResumesController(
             return RedirectToAction(nameof(Index));
         }
 
-        await using var transaction = await dbContext.Database.BeginTransactionAsync();
-        await dbContext.Resumes
-            .Where(item => item.UserId == userId && item.IsDefault)
-            .ExecuteUpdateAsync(setters => setters.SetProperty(item => item.IsDefault, false));
+        await quotaGate.RunAsync(
+            WorkspaceQuotaResources.Resumes,
+            userId,
+            async cancellationToken =>
+            {
+                await dbContext.Resumes
+                    .Where(item => item.UserId == userId && item.IsDefault)
+                    .ExecuteUpdateAsync(
+                        setters => setters.SetProperty(item => item.IsDefault, false),
+                        cancellationToken);
 
-        resume.IsDefault = true;
-        resume.UpdatedAt = DateTimeOffset.UtcNow;
-        await dbContext.SaveChangesAsync();
-        await transaction.CommitAsync();
+                resume.IsDefault = true;
+                resume.UpdatedAt = DateTimeOffset.UtcNow;
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return true;
+            },
+            HttpContext.RequestAborted);
 
         TempData["SuccessMessage"] = $"{resume.VersionName} is now your default resume.";
         return RedirectToAction(nameof(Index));
@@ -153,31 +163,37 @@ public class ResumesController(
         }
 
         var now = DateTimeOffset.UtcNow;
-        await using var transaction = await dbContext.Database.BeginTransactionAsync();
-        await dbContext.ResumeAnalyses
-            .Where(analysis => analysis.UserId == resume.UserId && analysis.ResumeId == resume.Id)
-            .ExecuteDeleteAsync();
-        await dbContext.JobApplications
-            .Where(application => application.UserId == resume.UserId && application.ResumeId == resume.Id)
-            .ExecuteUpdateAsync(setters => setters
-                .SetProperty(application => application.ResumeId, (int?)null)
-                .SetProperty(application => application.UpdatedAt, now));
-
-        if (!await dbContext.ResumeFileCleanups.AnyAsync(
-                cleanup => cleanup.FilePath == resume.FilePath,
-                HttpContext.RequestAborted))
-        {
-            dbContext.ResumeFileCleanups.Add(new ResumeFileCleanup
+        await quotaGate.RunAsync(
+            WorkspaceQuotaResources.Resumes,
+            resume.UserId,
+            async cancellationToken =>
             {
-                FilePath = resume.FilePath,
-                CreatedAt = now,
-                NextAttemptAt = now
-            });
-        }
+                await dbContext.ResumeAnalyses
+                    .Where(analysis => analysis.UserId == resume.UserId && analysis.ResumeId == resume.Id)
+                    .ExecuteDeleteAsync(cancellationToken);
+                await dbContext.JobApplications
+                    .Where(application => application.UserId == resume.UserId && application.ResumeId == resume.Id)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(application => application.ResumeId, (int?)null)
+                        .SetProperty(application => application.UpdatedAt, now), cancellationToken);
 
-        dbContext.Resumes.Remove(resume);
-        await dbContext.SaveChangesAsync();
-        await transaction.CommitAsync();
+                if (!await dbContext.ResumeFileCleanups.AnyAsync(
+                        cleanup => cleanup.FilePath == resume.FilePath,
+                        cancellationToken))
+                {
+                    dbContext.ResumeFileCleanups.Add(new ResumeFileCleanup
+                    {
+                        FilePath = resume.FilePath,
+                        CreatedAt = now,
+                        NextAttemptAt = now
+                    });
+                }
+
+                dbContext.Resumes.Remove(resume);
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return true;
+            },
+            HttpContext.RequestAborted);
 
         TempData["SuccessMessage"] = $"{resume.VersionName} was deleted. Its private file is queued for secure removal.";
         return RedirectToAction(nameof(Index));

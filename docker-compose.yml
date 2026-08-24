@@ -1,36 +1,38 @@
+# Local integration stack only. Production uses the reviewed MonsterASP.NET
+# artifact workflow and host-managed SQL, TLS, secrets, backups, and storage.
 x-application-environment: &application-environment
-  ASPNETCORE_ENVIRONMENT: Production
-  Email__Host: "${SMTP_HOST:?set SMTP_HOST}"
+  ASPNETCORE_ENVIRONMENT: Development
+  PublicOrigin: "http://localhost:8080"
+  AllowedHosts: "localhost;127.0.0.1"
+  AdminAccess__Emails__0: "${ADMIN_EMAIL:-owner@example.test}"
+  ResumeStorage__RootPath: "/app/App_Data/Uploads/Resumes"
+  DataProtection__KeysPath: "/app/App_Data/DataProtectionKeys"
+  Email__Host: "${SMTP_HOST:-}"
   Email__Port: "${SMTP_PORT:-587}"
   Email__UserName: "${SMTP_USERNAME:-}"
   Email__Password: "${SMTP_PASSWORD:-}"
-  Email__From: "${SMTP_FROM:?set SMTP_FROM}"
-  PublicOrigin: "${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN}"
-  AllowedHosts: "${ALLOWED_HOSTS:?set ALLOWED_HOSTS}"
-  AdminAccess__Emails__0: "${ADMIN_EMAIL:?set ADMIN_EMAIL}"
-  ResumeStorage__RootPath: "/app/App_Data/Uploads/Resumes"
-  DataProtection__KeysPath: "/app/App_Data/DataProtectionKeys"
-  DataProtection__CertificatePath: "/run/secrets/data-protection.pfx"
-  DataProtection__CertificatePassword: "${DATA_PROTECTION_CERTIFICATE_PASSWORD:?set DATA_PROTECTION_CERTIFICATE_PASSWORD}"
+  Email__From: "${SMTP_FROM:-}"
 
 services:
   web:
-    build: .
+    build:
+      context: .
+      target: runtime
+      args:
+        SOURCE_REVISION_ID: "${SOURCE_REVISION_ID:-local-compose}"
     ports:
       - "127.0.0.1:8080:8080"
     environment:
       <<: *application-environment
-      ConnectionStrings__DefaultConnection: "${APP_DB_CONNECTION_STRING:?set APP_DB_CONNECTION_STRING}"
+      ConnectionStrings__DefaultConnection: "Server=db,1433;Database=ApplyWise;User Id=sa;Password=${SA_PASSWORD:?set SA_PASSWORD};Encrypt=True;TrustServerCertificate=True"
     depends_on:
       db:
         condition: service_healthy
+    restart: unless-stopped
     volumes:
       - resumes:/app/App_Data/Uploads/Resumes
       - data_protection_keys:/app/App_Data/DataProtectionKeys
-    secrets:
-      - source: data_protection_certificate
-        target: data-protection.pfx
-        mode: 0444
+
   migrate:
     profiles: ["migration"]
     build:
@@ -39,21 +41,20 @@ services:
     working_dir: /src
     environment:
       <<: *application-environment
-      ConnectionStrings__DefaultConnection: "${MIGRATION_DB_CONNECTION_STRING:?set MIGRATION_DB_CONNECTION_STRING}"
-    command: ["dotnet", "ef", "database", "update", "--project", "src/ApplyWise.Web/ApplyWise.Web.csproj", "--startup-project", "src/ApplyWise.Web/ApplyWise.Web.csproj", "--configuration", "Release", "--no-build"]
+      ConnectionStrings__DefaultConnection: "Server=db,1433;Database=ApplyWise;User Id=sa;Password=${SA_PASSWORD:?set SA_PASSWORD};Encrypt=True;TrustServerCertificate=True"
+    command: ["dotnet", "tool", "run", "dotnet-ef", "database", "update", "--project", "src/ApplyWise.Web/ApplyWise.Web.csproj", "--startup-project", "src/ApplyWise.Web/ApplyWise.Web.csproj", "--configuration", "Release", "--no-build"]
     depends_on:
       db:
         condition: service_healthy
     restart: "no"
-    secrets:
-      - source: data_protection_certificate
-        target: data-protection.pfx
-        mode: 0444
+
   db:
-    image: mcr.microsoft.com/mssql/server:2022-latest
+    image: mcr.microsoft.com/mssql/server:2022-CU26-ubuntu-22.04@sha256:ba4c8329f48fb8f02e1416be6a930ebfd71268caee78aa985f3af4315e457c89
     environment:
       ACCEPT_EULA: "Y"
+      MSSQL_PID: "Developer"
       MSSQL_SA_PASSWORD: "${SA_PASSWORD:?set SA_PASSWORD}"
+    restart: unless-stopped
     volumes:
       - sql_data:/var/opt/mssql
     healthcheck:
@@ -61,10 +62,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 20
+      start_period: 20s
+
 volumes:
   sql_data:
   resumes:
   data_protection_keys:
-secrets:
-  data_protection_certificate:
-    file: "${DATA_PROTECTION_CERTIFICATE_FILE:?set DATA_PROTECTION_CERTIFICATE_FILE}"

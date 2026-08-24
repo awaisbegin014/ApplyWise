@@ -15,9 +15,11 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<AccountSecurityCode> AccountSecurityCodes => Set<AccountSecurityCode>();
     public DbSet<ResumeFileCleanup> ResumeFileCleanups => Set<ResumeFileCleanup>();
     public DbSet<GmailConnection> GmailConnections => Set<GmailConnection>();
+    public DbSet<GmailOAuthFlow> GmailOAuthFlows => Set<GmailOAuthFlow>();
     public DbSet<ApplicationImport> ApplicationImports => Set<ApplicationImport>();
     public DbSet<UserAccountActivity> UserAccountActivities => Set<UserAccountActivity>();
     public DbSet<ProductEvent> ProductEvents => Set<ProductEvent>();
+    public DbSet<ContactMessage> ContactMessages => Set<ContactMessage>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -194,8 +196,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         {
             entity.HasIndex(code => new { code.UserId, code.Action, code.CreatedAt });
             entity.Property(code => code.Action).HasConversion<string>().HasMaxLength(30);
-            entity.Property(code => code.Salt).HasMaxLength(16);
-            entity.Property(code => code.CodeHash).HasMaxLength(32);
+            entity.Property(code => code.ProtectedCode).HasColumnType("varbinary(512)");
             entity.HasOne(code => code.User).WithMany().HasForeignKey(code => code.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
@@ -233,6 +234,21 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
                 .OnDelete(DeleteBehavior.SetNull);
         });
 
+        builder.Entity<ContactMessage>(entity =>
+        {
+            entity.Property(message => message.FullName).HasMaxLength(100);
+            entity.Property(message => message.Email).HasMaxLength(320);
+            entity.Property(message => message.Topic).HasConversion<string>().HasMaxLength(40);
+            entity.Property(message => message.Subject).HasMaxLength(160);
+            entity.Property(message => message.Body).HasMaxLength(4000);
+            entity.HasIndex(message => message.CreatedAt);
+            entity.HasIndex(message => new { message.ReadAt, message.CreatedAt });
+            entity.HasOne(message => message.User)
+                .WithMany()
+                .HasForeignKey(message => message.UserId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
         builder.Entity<ResumeFileCleanup>(entity =>
         {
             entity.Property(cleanup => cleanup.FilePath).HasMaxLength(500);
@@ -253,6 +269,16 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             entity.HasOne(connection => connection.User)
                 .WithMany()
                 .HasForeignKey(connection => connection.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<GmailOAuthFlow>(entity =>
+        {
+            entity.HasKey(flow => flow.UserId);
+            entity.Property(flow => flow.FlowId).HasMaxLength(64);
+            entity.HasOne(flow => flow.User)
+                .WithOne()
+                .HasForeignKey<GmailOAuthFlow>(flow => flow.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

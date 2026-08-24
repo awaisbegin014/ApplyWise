@@ -1,5 +1,5 @@
 @model ApplyWise.Web.ViewModels.Interviews.InterviewCreateViewModel
 @{ ViewData["Title"] = "Add Interview"; }
-<div class="page-heading"><div><h1>Add Interview</h1><p>Schedule the next conversation, test, or onsite step.</p></div></div>
-<form asp-action="Create" method="post" class="application-form"><partial name="_InterviewForm" model="Model" /><div class="form-actions"><button class="btn btn-primary" type="submit" disabled="@(Model.AvailableApplications.Count == 0)">Save Interview</button><a class="btn btn-outline-secondary" asp-action="Index">Cancel</a></div></form>
+<div class="page-heading"><div><h1>Add interview</h1><p>Schedule the next conversation, test, or onsite step.</p></div></div>
+<form asp-action="Create" method="post" class="application-form"><partial name="_InterviewForm" model="Model" /><div class="form-actions"><button class="btn btn-primary" type="submit" disabled="@(Model.AvailableApplications.Count == 0)">Save interview</button><a class="btn btn-outline-secondary" asp-action="Index">Cancel</a></div></form>
 @section Scripts { <partial name="_ValidationScriptsPartial" /> }

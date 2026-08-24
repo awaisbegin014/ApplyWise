@@ -1,8 +1,10 @@
 @model ApplyWise.Web.ViewModels.ApplicationImports.ApplicationImportIndexViewModel
+@using ApplyWise.Web.Services.Gmail
 @{
     ViewData["Title"] = "Application imports";
     var connection = Model.GmailConnection;
     var hasSyncError = connection?.LastErrorCode is not null;
+    var isRevocationPending = connection?.LastErrorCode == GmailConnectionStates.RevocationPending;
 }
 
 <div class="page-heading aw-import-heading">
@@ -62,7 +64,7 @@
     {
         <div class="aw-import-connected">
             <span class="aw-import-status @(hasSyncError ? "is-warning" : "is-connected")">
-                @(hasSyncError ? "Needs attention" : "Connected")
+                @(isRevocationPending ? "Disconnect pending" : hasSyncError ? "Needs attention" : "Connected")
             </span>
             <strong>@connection.EmailAddress</strong>
             <small>
@@ -75,34 +77,44 @@
                     <text>Waiting for the first successful sync.</text>
                 }
             </small>
-            @if (hasSyncError)
+            @if (isRevocationPending)
+            {
+                <small class="aw-import-warning">Syncing is off. Google has not yet confirmed token revocation.</small>
+            }
+            else if (hasSyncError)
             {
                 <small class="aw-import-warning">Reconnect Gmail if the next manual sync does not succeed.</small>
             }
             <div class="aw-import-connection-actions">
-                <form asp-action="Sync" method="post">
-                    <button class="btn btn-primary" type="submit">Sync now</button>
-                </form>
+                @if (!isRevocationPending)
+                {
+                    <form asp-action="Sync" method="post">
+                        <button class="btn btn-primary" type="submit">Sync now</button>
+                    </form>
+                }
                 <form asp-controller="GmailConnections" asp-action="Disconnect" method="post">
-                    <button class="btn btn-danger-soft" type="submit">Disconnect</button>
+                    <button class="btn btn-danger-soft" type="submit">@(isRevocationPending ? "Retry disconnect" : "Disconnect")</button>
                 </form>
             </div>
-            <form class="aw-import-preference"
-                  asp-action="UpdateAutoAddPreference"
-                  method="post">
-                <div class="aw-import-preference-control">
-                    <input asp-for="AutoAddHighConfidenceApplications"
-                           class="form-check-input" />
-                    <label asp-for="AutoAddHighConfidenceApplications">
-                        Automatically add high-confidence applications
-                    </label>
-                </div>
-                <p>
-                    ApplyWise automatically adds application confirmations when the company,
-                    role and evidence are clear. Uncertain emails will still wait for review.
-                </p>
-                <button class="btn btn-secondary-soft" type="submit">Save preference</button>
-            </form>
+            @if (!isRevocationPending)
+            {
+                <form class="aw-import-preference"
+                      asp-action="UpdateAutoAddPreference"
+                      method="post">
+                    <div class="aw-import-preference-control">
+                        <input asp-for="AutoAddHighConfidenceApplications"
+                               class="form-check-input" />
+                        <label asp-for="AutoAddHighConfidenceApplications">
+                            Automatically add high-confidence applications
+                        </label>
+                    </div>
+                    <p>
+                        ApplyWise automatically adds application confirmations when the company,
+                        role and evidence are clear. Uncertain emails will still wait for review.
+                    </p>
+                    <button class="btn btn-secondary-soft" type="submit">Save preference</button>
+                </form>
+            }
         </div>
     }
 </section>

@@ -1,9 +1,7 @@
-using System.Data;
 using ApplyWise.Web.Data;
 using ApplyWise.Web.Models;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
 using ApplyWise.Web.Services.Security;
 
 namespace ApplyWise.Web.Services.Gmail;
@@ -55,8 +53,11 @@ public interface IApplicationImportProcessor
 public sealed class ApplicationImportProcessor(
     ApplicationDbContext dbContext,
     ILogger<ApplicationImportProcessor> logger,
-    IWorkspaceQuotaService? quotas = null) : IApplicationImportProcessor
+    IWorkspaceQuotaService? quotas = null,
+    IWorkspaceQuotaGate? quotaGate = null) : IApplicationImportProcessor
 {
+    private readonly IWorkspaceQuotaGate _quotaGate = quotaGate ?? new WorkspaceQuotaGate(dbContext);
+
     private static readonly HashSet<string> TrackingQueryParameters =
         new(StringComparer.OrdinalIgnoreCase)
         {
@@ -98,16 +99,18 @@ public sealed class ApplicationImportProcessor(
         bool automatically,
         CancellationToken cancellationToken)
     {
-        var executionStrategy = dbContext.Database.CreateExecutionStrategy();
         try
         {
-            return await executionStrategy.ExecuteAsync(
-                () => ProcessCoreAsync(
+            return await _quotaGate.RunAsync(
+                WorkspaceQuotaResources.Applications,
+                userId,
+                operationCancellationToken => ProcessCoreAsync(
                     importId,
                     userId,
                     manualData,
                     automatically,
-                    cancellationToken));
+                    operationCancellationToken),
+                cancellationToken);
         }
         catch (DbUpdateConcurrencyException)
         {
@@ -150,16 +153,8 @@ public sealed class ApplicationImportProcessor(
         bool automatically,
         CancellationToken cancellationToken)
     {
-        // Each execution-strategy attempt starts from database state, including retries
-        // after a transaction rollback.
+        // Each quota-gate operation starts from the latest database state.
         dbContext.ChangeTracker.Clear();
-
-        await using IDbContextTransaction? transaction =
-            dbContext.Database.IsRelational()
-                ? await dbContext.Database.BeginTransactionAsync(
-                    IsolationLevel.Serializable,
-                    cancellationToken)
-                : null;
 
         var import = await dbContext.ApplicationImports
             .Include(item => item.GmailConnection)
@@ -242,10 +237,6 @@ public sealed class ApplicationImportProcessor(
                     ? ApplicationImportStatus.AutoAccepted
                     : ApplicationImportStatus.Accepted);
             await dbContext.SaveChangesAsync(cancellationToken);
-            if (transaction is not null)
-            {
-                await transaction.CommitAsync(cancellationToken);
-            }
 
             return new(
                 ApplicationImportProcessOutcome.LinkedExisting,
@@ -283,7 +274,7 @@ public sealed class ApplicationImportProcessor(
         };
         dbContext.JobApplications.Add(application);
 
-        // The first save obtains the generated application ID. The surrounding
+        // The first save obtains the generated application ID. The quota gate's
         // transaction keeps that insert atomic with the import status/link update.
         await dbContext.SaveChangesAsync(cancellationToken);
         CompleteImport(
@@ -293,10 +284,6 @@ public sealed class ApplicationImportProcessor(
                 ? ApplicationImportStatus.AutoAccepted
                 : ApplicationImportStatus.Accepted);
         await dbContext.SaveChangesAsync(cancellationToken);
-        if (transaction is not null)
-        {
-            await transaction.CommitAsync(cancellationToken);
-        }
 
         return new(
             ApplicationImportProcessOutcome.Created,
@@ -306,7 +293,8 @@ public sealed class ApplicationImportProcessor(
     }
 
     private static bool IsAutoAddEligible(ApplicationImport import) =>
-        import.GmailConnection?.AutoAddHighConfidenceApplications == true
+        import.GmailConnection is { AutoAddHighConfidenceApplications: true } connection
+        && connection.LastErrorCode != GmailConnectionStates.RevocationPending
         && import.Direction == ApplicationImportDirection.Incoming
         && import.Confidence >= ApplicationImportPolicy.HighConfidenceThreshold
         && !string.IsNullOrWhiteSpace(import.CompanyName)

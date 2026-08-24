@@ -1,0 +1,14 @@
+@model string
+@inject Microsoft.Extensions.Options.IOptions<ApplyWise.Web.Services.Security.HumanChallengeOptions> HumanChallengeOptions
+
+@if (HumanChallengeOptions.Value.Enabled)
+{
+    <div class="aw-human-challenge">
+        <div class="cf-turnstile"
+             data-sitekey="@HumanChallengeOptions.Value.SiteKey"
+             data-action="@Model"
+             data-theme="light"
+             data-size="flexible"></div>
+        <noscript>Enable JavaScript to complete the human verification.</noscript>
+    </div>
+}

@@ -59,6 +59,23 @@
             document.body.classList.remove('sidebar-open');
             syncButton();
             menuButton.focus();
+            return;
+        }
+
+        if (event.key === 'Tab' && mobileQuery.matches && document.body.classList.contains('sidebar-open')) {
+            const focusable = Array.from(sidebar.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'))
+                .filter((element) => !element.hidden && element.getClientRects().length > 0);
+            if (!focusable.length) return;
+
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
         }
     });
     mobileQuery.addEventListener?.('change', applyViewportState);
@@ -128,26 +145,12 @@ document.querySelectorAll('[data-security-code]').forEach((input) => {
     document.addEventListener('keydown', (event) => {
         if (event.key === 'Escape' && !panel.hidden) close(true);
     });
+    menu.addEventListener('focusout', () => {
+        window.setTimeout(() => {
+            if (!menu.contains(document.activeElement)) close();
+        });
+    });
 })();
-
-document.querySelectorAll('[data-confirm-redirect]').forEach((container) => {
-    const target = container.dataset.confirmRedirect;
-    if (!target || !target.startsWith('/') || target.startsWith('//')) return;
-
-    const configuredSeconds = Number.parseInt(container.dataset.confirmRedirectSeconds ?? '5', 10);
-    let remaining = Number.isFinite(configuredSeconds) && configuredSeconds > 0 ? configuredSeconds : 5;
-    const countdown = container.querySelector('[data-confirm-redirect-countdown]');
-    if (countdown) countdown.textContent = String(remaining);
-
-    const interval = window.setInterval(() => {
-        remaining -= 1;
-        if (countdown) countdown.textContent = String(Math.max(remaining, 0));
-        if (remaining <= 0) {
-            window.clearInterval(interval);
-            window.location.assign(target);
-        }
-    }, 1000);
-});
 
 (() => {
     const container = document.querySelector('[data-custom-fields]');
@@ -175,8 +178,14 @@ document.querySelectorAll('[data-confirm-redirect]').forEach((container) => {
     list.addEventListener('click', (event) => {
         const remove = event.target.closest('[data-custom-field-remove]');
         if (!remove) return;
-        remove.closest('[data-custom-field-row]')?.remove();
+        const row = remove.closest('[data-custom-field-row]');
+        const rows = Array.from(list.querySelectorAll('[data-custom-field-row]'));
+        const removedIndex = rows.indexOf(row);
+        row?.remove();
         reindex();
+        const remainingRows = Array.from(list.querySelectorAll('[data-custom-field-row]'));
+        const nextRow = remainingRows[Math.min(Math.max(removedIndex, 0), remainingRows.length - 1)];
+        (nextRow?.querySelector('input') ?? add).focus();
     });
 })();
 

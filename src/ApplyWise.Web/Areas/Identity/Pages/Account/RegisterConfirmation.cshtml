@@ -5,8 +5,7 @@
     ViewData["MetaDescription"] = "Enter your ApplyWise verification code to confirm your account.";
 }
 
-<div class="aw-auth-shell aw-auth-shell-code aw-fade-in"
-     @if (Model.Succeeded) { <text>data-confirm-redirect="@Model.LoginUrl" data-confirm-redirect-seconds="5"</text> }>
+<div class="aw-auth-shell aw-auth-shell-code aw-fade-in">
     <section class="aw-login-card aw-code-card aw-slide-up" aria-labelledby="registration-confirmation-title">
         @if (Model.Succeeded)
         {
@@ -16,17 +15,14 @@
             </span>
             <h1 id="registration-confirmation-title">Your account is ready</h1>
             <p>@Model.DeliveryMessage</p>
-            <div class="aw-auth-status-callout aw-auth-status-callout-success" role="status">
-                Taking you to login in <strong data-confirm-redirect-countdown>5</strong> seconds.
-            </div>
-            <a class="btn btn-primary btn-lg aw-login-submit" href="@Model.LoginUrl">Continue to login now</a>
+            <a class="btn btn-primary btn-lg aw-login-submit" href="@Model.LoginUrl">Continue to login</a>
         }
         else
         {
             <header class="aw-login-heading">
                 <span class="aw-auth-kicker"><svg class="ui-icon"><use href="#i-mail" /></svg>Secure your account</span>
-                <h1 id="registration-confirmation-title">Enter your verification code</h1>
-                <p>We sent a six-digit code to <strong>@Model.Input.Email</strong>. It expires in 10 minutes.</p>
+                <h1 id="registration-confirmation-title">Verify and secure your account</h1>
+                <p>Enter the six-digit code, then choose the password that will own this account. The code expires in 10 minutes.</p>
             </header>
 
             @if (!string.IsNullOrWhiteSpace(Model.DeliveryMessage))
@@ -56,8 +52,29 @@
                     <span asp-validation-for="Input.Code" class="field-validation-error"></span>
                 </label>
 
+                <div class="aw-login-field">
+                    <label class="aw-login-field-label" asp-for="Input.Password">Choose your password</label>
+                    <span class="aw-login-input">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
+                        <input asp-for="Input.Password" autocomplete="new-password" placeholder="Create a secure password" aria-describedby="confirmation-password-requirements" />
+                        <partial name="_PasswordToggle" model='"Input_Password"' />
+                    </span>
+                    <small id="confirmation-password-requirements" class="aw-password-help">@ApplyWise.Web.Services.AccountSecurity.PasswordRequirements.UserFacingSummary</small>
+                    <span asp-validation-for="Input.Password" class="field-validation-error"></span>
+                </div>
+
+                <div class="aw-login-field">
+                    <label class="aw-login-field-label" asp-for="Input.ConfirmPassword">Confirm your password</label>
+                    <span class="aw-login-input">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
+                        <input asp-for="Input.ConfirmPassword" autocomplete="new-password" placeholder="Repeat your secure password" />
+                        <partial name="_PasswordToggle" model='"Input_ConfirmPassword"' />
+                    </span>
+                    <span asp-validation-for="Input.ConfirmPassword" class="field-validation-error"></span>
+                </div>
+
                 <button type="submit" class="btn btn-primary btn-lg aw-login-submit">
-                    Verify account <svg class="ui-icon"><use href="#i-arrow" /></svg>
+                    Verify and secure account <svg class="ui-icon"><use href="#i-arrow" /></svg>
                 </button>
             </form>
 

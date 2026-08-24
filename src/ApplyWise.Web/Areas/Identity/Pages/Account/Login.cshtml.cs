@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 using ApplyWise.Web.Services.Admin;
 using ApplyWise.Web.Services.Monitoring;
+using ApplyWise.Web.Services.AccountSecurity;
 
 namespace ApplyWise.Web.Areas.Identity.Pages.Account;
 
@@ -22,10 +23,14 @@ public class LoginModel(
     ApplicationDbContext dbContext,
     IProductEventRecorder events,
     IAdminRoleAssignmentService adminRoles,
+    ILoginTimingProtector loginTimingProtector,
     IOptions<AdminAccessOptions> adminOptions,
     IOptions<GoogleIntegrationOptions> googleOptions,
     ILogger<LoginModel> logger) : PageModel
 {
+    private const string InvalidPasswordLoginMessage =
+        "We couldn't log you in with those details. Check your email and password, then try again.";
+
     [BindProperty]
     public InputModel Input { get; set; } = new();
 
@@ -42,6 +47,7 @@ public class LoginModel(
         public string Email { get; set; } = string.Empty;
 
         [Required]
+        [StringLength(100)]
         [DataType(DataType.Password)]
         public string Password { get; set; } = string.Empty;
 
@@ -69,6 +75,21 @@ public class LoginModel(
 
     public async Task<IActionResult> OnPostAsync(string? returnUrl = null)
     {
+        var startedAt = System.Diagnostics.Stopwatch.GetTimestamp();
+        try
+        {
+            return await LoginWithPasswordAsync(returnUrl);
+        }
+        finally
+        {
+            await loginTimingProtector.EnforceMinimumResponseTimeAsync(
+                startedAt,
+                HttpContext.RequestAborted);
+        }
+    }
+
+    private async Task<IActionResult> LoginWithPasswordAsync(string? returnUrl)
+    {
         returnUrl ??= Url.Content("~/");
         ReturnUrl = returnUrl;
 
@@ -78,16 +99,39 @@ public class LoginModel(
         }
 
         var passwordUser = await userManager.FindByEmailAsync(Input.Email);
-        if (passwordUser is not null && adminOptions.Value.Contains(passwordUser.Email))
-        {
-            await adminRoles.SynchronizeUserAsync(passwordUser);
-            await signInManager.ForgetTwoFactorClientAsync();
-        }
+        // Clear remembered-client state uniformly for every password attempt.
+        // This both requires current-session second-factor proof and avoids an
+        // owner-only Set-Cookie response that would disclose row existence.
+        await signInManager.ForgetTwoFactorClientAsync();
 
-        var result = passwordUser is null
-            ? Microsoft.AspNetCore.Identity.SignInResult.Failed
-            : await signInManager.PasswordSignInAsync(
+        Microsoft.AspNetCore.Identity.SignInResult result;
+        if (passwordUser is null)
+        {
+            loginTimingProtector.VerifyDummyPassword(Input.Password);
+            result = Microsoft.AspNetCore.Identity.SignInResult.Failed;
+        }
+        else if (userManager.Options.SignIn.RequireConfirmedAccount
+                 && !await userManager.IsEmailConfirmedAsync(passwordUser))
+        {
+            // Identity rejects an unconfirmed account before hashing its
+            // password. Pay the same bounded hashing cost as other failures.
+            loginTimingProtector.VerifyDummyPassword(Input.Password);
+            result = Microsoft.AspNetCore.Identity.SignInResult.NotAllowed;
+        }
+        else if (userManager.SupportsUserLockout
+                 && await userManager.IsLockedOutAsync(passwordUser))
+        {
+            // Identity short-circuits pre-locked accounts before password hashing.
+            // Perform one equivalent-cost verification so the failure path does
+            // not disclose lockout state through a fast response.
+            loginTimingProtector.VerifyDummyPassword(Input.Password);
+            result = Microsoft.AspNetCore.Identity.SignInResult.LockedOut;
+        }
+        else
+        {
+            result = await signInManager.PasswordSignInAsync(
                 passwordUser, Input.Password, Input.RememberMe, lockoutOnFailure: true);
+        }
 
         if (result.Succeeded)
         {
@@ -107,6 +151,10 @@ public class LoginModel(
 
         if (result.RequiresTwoFactor)
         {
+            if (passwordUser is not null)
+            {
+                await adminRoles.SynchronizeUserAsync(passwordUser);
+            }
             return RedirectToPage("./LoginWith2fa", new { ReturnUrl = returnUrl, Input.RememberMe });
         }
 
@@ -118,8 +166,7 @@ public class LoginModel(
                 succeeded: false,
                 cancellationToken: HttpContext.RequestAborted);
             logger.LogWarning("User account locked out.");
-            ModelState.AddModelError(string.Empty, "We couldn’t log you in with those details. Check your email and password, then try again.");
-            return Page();
+            return InvalidPasswordLogin();
         }
 
         await events.RecordAsync(
@@ -127,8 +174,7 @@ public class LoginModel(
             "password",
             succeeded: false,
             cancellationToken: HttpContext.RequestAborted);
-        ModelState.AddModelError(string.Empty, "We couldn't log you in with those details. Check your email and password, then try again.");
-        return Page();
+        return InvalidPasswordLogin();
     }
 
     public IActionResult OnPostExternalLogin(string provider, string? returnUrl = null)
@@ -328,5 +374,11 @@ public class LoginModel(
         {
             ModelState.AddModelError(string.Empty, error.Description);
         }
+    }
+
+    private IActionResult InvalidPasswordLogin()
+    {
+        ModelState.AddModelError(string.Empty, InvalidPasswordLoginMessage);
+        return Page();
     }
 }
