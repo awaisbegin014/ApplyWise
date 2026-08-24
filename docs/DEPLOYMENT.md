@@ -14,7 +14,9 @@ Add these settings under **Websites → Manage website → Scripting → Environ
 
 ```text
 ASPNETCORE_ENVIRONMENT=Production
-ConnectionStrings__DefaultConnection=<Monster MSSQL connection string with Encrypt=True;TrustServerCertificate=False>
+ConnectionStrings__DefaultConnection=<Monster MSSQL connection string>
+SqlTransport__AllowMonsterAspManagedCertificate=true
+SqlTransport__MonsterAspHost=<exact Monster internal database hostname>
 PublicOrigin=https://<public-host-name>
 AllowedHosts=<public-host-name>
 AdminAccess__Emails__0=<out-of-band provisioned owner address>
@@ -38,7 +40,7 @@ Google__GmailImportEnabled=false
 
 Use absolute paths below the site's sibling `Private` directory for resumes, Data Protection keys, and the PFX certificate—for example, `D:\Sites\site12345\Private\ApplyWise\...` using the actual physical path shown for your Monster site. Production rejects any of these paths beneath the application/Web Deploy root because `target-delete` could erase them. Upload the certificate to `Private` through Monster WebFTP and back up the encrypted key directory; it protects authentication cookies, protected Gmail credentials, and account-recovery tokens.
 
-Production intentionally refuses to start with the `sa` login, placeholder values, wildcard hosts, a non-HTTPS public origin, an untrusted proxy configuration, missing Turnstile credentials, or relative storage/key paths. SQL encryption and certificate-chain validation are enforced by the application even if a hosting profile supplies weaker client flags; the SQL endpoint must present a certificate that chains to a trusted root. Use a separate, temporary migration identity with schema permissions and never place those elevated credentials in the Monster website environment. Set `ForwardedHeaders__KnownProxies__0` (and additional indexed values as needed) only to the exact proxy IP addresses that terminate TLS. Restrict the Turnstile widget to the public hostname; registration and anonymous contact submissions are accepted only after server-side token, action, and hostname validation.
+Production intentionally refuses to start with the `sa` login, placeholder values, wildcard hosts, a non-HTTPS public origin, an untrusted proxy configuration, missing Turnstile credentials, or relative storage/key paths. SQL encryption is enforced by the application even if a hosting profile supplies weaker client flags. Publicly trusted certificate-chain validation remains the default. MonsterASP's provider-managed SQL certificate is accepted only when `SqlTransport__AllowMonsterAspManagedCertificate=true`, the configured server exactly matches `SqlTransport__MonsterAspHost`, and that host is under `databaseasp.net`; this exception never disables encryption and cannot authorize an arbitrary SQL server. Use a separate, temporary migration identity with schema permissions and never place those elevated credentials in the Monster website environment. Set `ForwardedHeaders__KnownProxies__0` (and additional indexed values as needed) only to the exact proxy IP addresses that terminate TLS. Restrict the Turnstile widget to the public hostname; registration and anonymous contact submissions are accepted only after server-side token, action, and hostname validation.
 
 Mark secrets as deployment settings and keep them out of `appsettings.json`, shell history, screenshots, and Git.
 
