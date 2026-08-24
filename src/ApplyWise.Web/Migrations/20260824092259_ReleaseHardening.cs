@@ -41,9 +41,9 @@ namespace ApplyWise.Web.Migrations
                 defaultValue: new byte[0]);
 
             migrationBuilder.Sql(
-                "UPDATE [ResumeAnalyses] SET [SnapshotSizeBytes] = "
+                "EXEC(N'UPDATE [ResumeAnalyses] SET [SnapshotSizeBytes] = "
                 + "COALESCE(DATALENGTH([ResumeTextSnapshot]), 0) + "
-                + "COALESCE(DATALENGTH([JobDescriptionSnapshot]), 0)");
+                + "COALESCE(DATALENGTH([JobDescriptionSnapshot]), 0)')");
         }
 
         /// <inheritdoc />
