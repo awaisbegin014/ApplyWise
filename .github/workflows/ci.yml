@@ -62,8 +62,8 @@ jobs:
             tail -c +4 .artifacts/migrations.sql > .artifacts/migrations.sql.tmp
             mv .artifacts/migrations.sql.tmp .artifacts/migrations.sql
           fi
-          docker exec ${{ job.services.sqlserver.id }} /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'ApplyWise-CI-Sql-42!' -C -b -d master -Q "IF DB_ID(N'ApplyWiseDb') IS NULL CREATE DATABASE [ApplyWiseDb]"
-          docker exec -i ${{ job.services.sqlserver.id }} /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'ApplyWise-CI-Sql-42!' -C -b -d ApplyWiseDb < .artifacts/migrations.sql
+          docker exec ${{ job.services.sqlserver.id }} /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'ApplyWise-CI-Sql-42!' -C -I -b -d master -Q "IF DB_ID(N'ApplyWiseDb') IS NULL CREATE DATABASE [ApplyWiseDb]"
+          docker exec -i ${{ job.services.sqlserver.id }} /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'ApplyWise-CI-Sql-42!' -C -I -b -d ApplyWiseDb < .artifacts/migrations.sql
 
       - name: Run .NET tests
         run: dotnet test ApplyWise.sln -c Release --no-build --logger trx --results-directory TestResults
