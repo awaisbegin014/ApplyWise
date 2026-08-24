@@ -58,6 +58,10 @@ jobs:
         run: |
           mkdir -p .artifacts
           dotnet tool run dotnet-ef migrations script --idempotent --project src/ApplyWise.Web/ApplyWise.Web.csproj --startup-project src/ApplyWise.Web/ApplyWise.Web.csproj --configuration Release --no-build -o .artifacts/migrations.sql
+          if [ "$(od -An -t x1 -N3 .artifacts/migrations.sql | tr -d ' \n')" = "efbbbf" ]; then
+            tail -c +4 .artifacts/migrations.sql > .artifacts/migrations.sql.tmp
+            mv .artifacts/migrations.sql.tmp .artifacts/migrations.sql
+          fi
           docker exec ${{ job.services.sqlserver.id }} /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'ApplyWise-CI-Sql-42!' -C -b -d master -Q "IF DB_ID(N'ApplyWiseDb') IS NULL CREATE DATABASE [ApplyWiseDb]"
           docker exec -i ${{ job.services.sqlserver.id }} /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'ApplyWise-CI-Sql-42!' -C -b -d ApplyWiseDb < .artifacts/migrations.sql
 
