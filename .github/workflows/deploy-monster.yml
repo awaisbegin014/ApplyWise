@@ -222,8 +222,20 @@ jobs:
             if ($actualPayloadHash -ne $manifest.payloadSha256) {
               throw "The $label publish payload does not match its provenance manifest."
             }
+            $workspacePath = (Resolve-Path -LiteralPath $env:GITHUB_WORKSPACE).Path
+            $deployPath = [IO.Path]::GetRelativePath($workspacePath, $publishPath).Replace('\', '/')
+            if ([IO.Path]::IsPathRooted($deployPath) -or
+                $deployPath -eq ".." -or
+                $deployPath.StartsWith("../", [StringComparison]::Ordinal)) {
+              throw "The $label publish payload must be located inside GITHUB_WORKSPACE."
+            }
+            $resolvedDeployPath = (Resolve-Path -LiteralPath (Join-Path $workspacePath $deployPath)).Path
+            if (-not [string]::Equals($resolvedDeployPath, $publishPath, [StringComparison]::OrdinalIgnoreCase)) {
+              throw "The $label relative deployment path does not resolve to its validated payload."
+            }
             return [pscustomobject]@{
               PublishPath = $publishPath
+              DeployPath = $deployPath
               MigrationSha256 = $manifest.migrationSha256
               PayloadSha256 = $manifest.payloadSha256
               SchemaMigration = $manifest.schemaMigration
@@ -233,18 +245,45 @@ jobs:
           $releasePayload = Get-ValidatedPayload ".artifacts/release" $env:RELEASE_SHA "release"
           $rollbackPayload = Get-ValidatedPayload ".artifacts/rollback" $env:ROLLBACK_SHA "rollback"
           "RELEASE_PUBLISH_PATH=$($releasePayload.PublishPath)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "RELEASE_DEPLOY_PATH=$($releasePayload.DeployPath)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "RELEASE_MIGRATION_SHA256=$($releasePayload.MigrationSha256)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "RELEASE_PAYLOAD_SHA256=$($releasePayload.PayloadSha256)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "RELEASE_SCHEMA_MIGRATION=$($releasePayload.SchemaMigration)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "ROLLBACK_PUBLISH_PATH=$($rollbackPayload.PublishPath)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "ROLLBACK_DEPLOY_PATH=$($rollbackPayload.DeployPath)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "ROLLBACK_MIGRATION_SHA256=$($rollbackPayload.MigrationSha256)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "ROLLBACK_SCHEMA_MIGRATION=$($rollbackPayload.SchemaMigration)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Ensure the application pool is running before preflight
+        shell: pwsh
+        env:
+          MONSTER_WEBSITE_NAME: ${{ inputs.website_name }}
+          MONSTER_SERVER_NAME: ${{ secrets.MONSTER_SERVER_COMPUTER_NAME }}
+          MONSTER_USERNAME: ${{ secrets.MONSTER_SERVER_USERNAME }}
+          MONSTER_PASSWORD: ${{ secrets.MONSTER_SERVER_PASSWORD }}
+        run: |
+          ./.github/scripts/set-monster-app-pool.ps1 `
+            -Mode StartAppPool `
+            -WebsiteName $env:MONSTER_WEBSITE_NAME `
+            -ServerComputerName $env:MONSTER_SERVER_NAME `
+            -ServerUsername $env:MONSTER_USERNAME `
+            -ServerPassword $env:MONSTER_PASSWORD
 
       - name: Verify the live site and rollback identity before mutation
         shell: pwsh
         run: |
-          $homeResponse = Invoke-WebRequest -Uri "$env:PRODUCTION_ORIGIN/" -UseBasicParsing -TimeoutSec 20
-          if ($homeResponse.StatusCode -ne 200) {
+          $homeResponse = $null
+          for ($attempt = 1; $attempt -le 6; $attempt++) {
+            try {
+              $homeResponse = Invoke-WebRequest -Uri "$env:PRODUCTION_ORIGIN/" -UseBasicParsing -TimeoutSec 20
+              if ($homeResponse.StatusCode -eq 200) { break }
+            }
+            catch {
+              Write-Warning "Live-site preflight attempt $attempt failed: $($_.Exception.Message)"
+            }
+            Start-Sleep -Seconds 10
+          }
+          if ($null -eq $homeResponse -or $homeResponse.StatusCode -ne 200) {
             throw "The current production site is not healthy enough to begin deployment."
           }
 
@@ -281,8 +320,24 @@ jobs:
           server-computer-name: ${{ secrets.MONSTER_SERVER_COMPUTER_NAME }}
           server-username: ${{ secrets.MONSTER_SERVER_USERNAME }}
           server-password: ${{ secrets.MONSTER_SERVER_PASSWORD }}
-          source-path: ${{ env.RELEASE_PUBLISH_PATH }}
+          source-path: ${{ env.RELEASE_DEPLOY_PATH }}
           target-delete: true
+
+      - name: Recover application pool after a failed release deployment
+        if: ${{ always() && steps.deploy_release.outcome == 'failure' }}
+        shell: pwsh
+        env:
+          MONSTER_WEBSITE_NAME: ${{ inputs.website_name }}
+          MONSTER_SERVER_NAME: ${{ secrets.MONSTER_SERVER_COMPUTER_NAME }}
+          MONSTER_USERNAME: ${{ secrets.MONSTER_SERVER_USERNAME }}
+          MONSTER_PASSWORD: ${{ secrets.MONSTER_SERVER_PASSWORD }}
+        run: |
+          ./.github/scripts/set-monster-app-pool.ps1 `
+            -Mode StartAppPool `
+            -WebsiteName $env:MONSTER_WEBSITE_NAME `
+            -ServerComputerName $env:MONSTER_SERVER_NAME `
+            -ServerUsername $env:MONSTER_USERNAME `
+            -ServerPassword $env:MONSTER_PASSWORD
 
       - name: Verify deployed version and readiness
         id: verify_release
@@ -322,8 +377,24 @@ jobs:
           server-computer-name: ${{ secrets.MONSTER_SERVER_COMPUTER_NAME }}
           server-username: ${{ secrets.MONSTER_SERVER_USERNAME }}
           server-password: ${{ secrets.MONSTER_SERVER_PASSWORD }}
-          source-path: ${{ env.ROLLBACK_PUBLISH_PATH }}
+          source-path: ${{ env.ROLLBACK_DEPLOY_PATH }}
           target-delete: true
+
+      - name: Recover application pool after a failed rollback deployment
+        if: ${{ always() && steps.deploy_rollback.outcome == 'failure' }}
+        shell: pwsh
+        env:
+          MONSTER_WEBSITE_NAME: ${{ inputs.website_name }}
+          MONSTER_SERVER_NAME: ${{ secrets.MONSTER_SERVER_COMPUTER_NAME }}
+          MONSTER_USERNAME: ${{ secrets.MONSTER_SERVER_USERNAME }}
+          MONSTER_PASSWORD: ${{ secrets.MONSTER_SERVER_PASSWORD }}
+        run: |
+          ./.github/scripts/set-monster-app-pool.ps1 `
+            -Mode StartAppPool `
+            -WebsiteName $env:MONSTER_WEBSITE_NAME `
+            -ServerComputerName $env:MONSTER_SERVER_NAME `
+            -ServerUsername $env:MONSTER_USERNAME `
+            -ServerPassword $env:MONSTER_PASSWORD
 
       - name: Verify rollback and fail deployment
         if: ${{ always() && (steps.deploy_release.outcome == 'failure' || steps.verify_release.outcome == 'failure') }}
