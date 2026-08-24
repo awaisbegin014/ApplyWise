@@ -254,11 +254,36 @@ jobs:
           "ROLLBACK_MIGRATION_SHA256=$($rollbackPayload.MigrationSha256)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "ROLLBACK_SCHEMA_MIGRATION=$($rollbackPayload.SchemaMigration)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
+      - name: Ensure the application pool is running before preflight
+        shell: pwsh
+        env:
+          MONSTER_WEBSITE_NAME: ${{ inputs.website_name }}
+          MONSTER_SERVER_NAME: ${{ secrets.MONSTER_SERVER_COMPUTER_NAME }}
+          MONSTER_USERNAME: ${{ secrets.MONSTER_SERVER_USERNAME }}
+          MONSTER_PASSWORD: ${{ secrets.MONSTER_SERVER_PASSWORD }}
+        run: |
+          ./.github/scripts/set-monster-app-pool.ps1 `
+            -Mode StartAppPool `
+            -WebsiteName $env:MONSTER_WEBSITE_NAME `
+            -ServerComputerName $env:MONSTER_SERVER_NAME `
+            -ServerUsername $env:MONSTER_USERNAME `
+            -ServerPassword $env:MONSTER_PASSWORD
+
       - name: Verify the live site and rollback identity before mutation
         shell: pwsh
         run: |
-          $homeResponse = Invoke-WebRequest -Uri "$env:PRODUCTION_ORIGIN/" -UseBasicParsing -TimeoutSec 20
-          if ($homeResponse.StatusCode -ne 200) {
+          $homeResponse = $null
+          for ($attempt = 1; $attempt -le 6; $attempt++) {
+            try {
+              $homeResponse = Invoke-WebRequest -Uri "$env:PRODUCTION_ORIGIN/" -UseBasicParsing -TimeoutSec 20
+              if ($homeResponse.StatusCode -eq 200) { break }
+            }
+            catch {
+              Write-Warning "Live-site preflight attempt $attempt failed: $($_.Exception.Message)"
+            }
+            Start-Sleep -Seconds 10
+          }
+          if ($null -eq $homeResponse -or $homeResponse.StatusCode -ne 200) {
             throw "The current production site is not healthy enough to begin deployment."
           }
 
@@ -297,6 +322,22 @@ jobs:
           server-password: ${{ secrets.MONSTER_SERVER_PASSWORD }}
           source-path: ${{ env.RELEASE_DEPLOY_PATH }}
           target-delete: true
+
+      - name: Recover application pool after a failed release deployment
+        if: ${{ always() && steps.deploy_release.outcome == 'failure' }}
+        shell: pwsh
+        env:
+          MONSTER_WEBSITE_NAME: ${{ inputs.website_name }}
+          MONSTER_SERVER_NAME: ${{ secrets.MONSTER_SERVER_COMPUTER_NAME }}
+          MONSTER_USERNAME: ${{ secrets.MONSTER_SERVER_USERNAME }}
+          MONSTER_PASSWORD: ${{ secrets.MONSTER_SERVER_PASSWORD }}
+        run: |
+          ./.github/scripts/set-monster-app-pool.ps1 `
+            -Mode StartAppPool `
+            -WebsiteName $env:MONSTER_WEBSITE_NAME `
+            -ServerComputerName $env:MONSTER_SERVER_NAME `
+            -ServerUsername $env:MONSTER_USERNAME `
+            -ServerPassword $env:MONSTER_PASSWORD
 
       - name: Verify deployed version and readiness
         id: verify_release
@@ -338,6 +379,22 @@ jobs:
           server-password: ${{ secrets.MONSTER_SERVER_PASSWORD }}
           source-path: ${{ env.ROLLBACK_DEPLOY_PATH }}
           target-delete: true
+
+      - name: Recover application pool after a failed rollback deployment
+        if: ${{ always() && steps.deploy_rollback.outcome == 'failure' }}
+        shell: pwsh
+        env:
+          MONSTER_WEBSITE_NAME: ${{ inputs.website_name }}
+          MONSTER_SERVER_NAME: ${{ secrets.MONSTER_SERVER_COMPUTER_NAME }}
+          MONSTER_USERNAME: ${{ secrets.MONSTER_SERVER_USERNAME }}
+          MONSTER_PASSWORD: ${{ secrets.MONSTER_SERVER_PASSWORD }}
+        run: |
+          ./.github/scripts/set-monster-app-pool.ps1 `
+            -Mode StartAppPool `
+            -WebsiteName $env:MONSTER_WEBSITE_NAME `
+            -ServerComputerName $env:MONSTER_SERVER_NAME `
+            -ServerUsername $env:MONSTER_USERNAME `
+            -ServerPassword $env:MONSTER_PASSWORD
 
       - name: Verify rollback and fail deployment
         if: ${{ always() && (steps.deploy_release.outcome == 'failure' || steps.verify_release.outcome == 'failure') }}
