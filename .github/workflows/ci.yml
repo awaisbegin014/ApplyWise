@@ -215,5 +215,6 @@ jobs:
             .artifacts/exact-payload-*.json
             .artifacts/exact-payload-smoke/runtime.log
             TestResults
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 90
