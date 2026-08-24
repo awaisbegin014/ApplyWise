@@ -243,8 +243,8 @@ jobs:
       - name: Verify the live site and rollback identity before mutation
         shell: pwsh
         run: |
-          $home = Invoke-WebRequest -Uri "$env:PRODUCTION_ORIGIN/" -UseBasicParsing -TimeoutSec 20
-          if ($home.StatusCode -ne 200) {
+          $homeResponse = Invoke-WebRequest -Uri "$env:PRODUCTION_ORIGIN/" -UseBasicParsing -TimeoutSec 20
+          if ($homeResponse.StatusCode -ne 200) {
             throw "The current production site is not healthy enough to begin deployment."
           }
 
