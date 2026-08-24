@@ -222,8 +222,20 @@ jobs:
             if ($actualPayloadHash -ne $manifest.payloadSha256) {
               throw "The $label publish payload does not match its provenance manifest."
             }
+            $workspacePath = (Resolve-Path -LiteralPath $env:GITHUB_WORKSPACE).Path
+            $deployPath = [IO.Path]::GetRelativePath($workspacePath, $publishPath).Replace('\', '/')
+            if ([IO.Path]::IsPathRooted($deployPath) -or
+                $deployPath -eq ".." -or
+                $deployPath.StartsWith("../", [StringComparison]::Ordinal)) {
+              throw "The $label publish payload must be located inside GITHUB_WORKSPACE."
+            }
+            $resolvedDeployPath = (Resolve-Path -LiteralPath (Join-Path $workspacePath $deployPath)).Path
+            if (-not [string]::Equals($resolvedDeployPath, $publishPath, [StringComparison]::OrdinalIgnoreCase)) {
+              throw "The $label relative deployment path does not resolve to its validated payload."
+            }
             return [pscustomobject]@{
               PublishPath = $publishPath
+              DeployPath = $deployPath
               MigrationSha256 = $manifest.migrationSha256
               PayloadSha256 = $manifest.payloadSha256
               SchemaMigration = $manifest.schemaMigration
@@ -233,10 +245,12 @@ jobs:
           $releasePayload = Get-ValidatedPayload ".artifacts/release" $env:RELEASE_SHA "release"
           $rollbackPayload = Get-ValidatedPayload ".artifacts/rollback" $env:ROLLBACK_SHA "rollback"
           "RELEASE_PUBLISH_PATH=$($releasePayload.PublishPath)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "RELEASE_DEPLOY_PATH=$($releasePayload.DeployPath)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "RELEASE_MIGRATION_SHA256=$($releasePayload.MigrationSha256)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "RELEASE_PAYLOAD_SHA256=$($releasePayload.PayloadSha256)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "RELEASE_SCHEMA_MIGRATION=$($releasePayload.SchemaMigration)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "ROLLBACK_PUBLISH_PATH=$($rollbackPayload.PublishPath)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "ROLLBACK_DEPLOY_PATH=$($rollbackPayload.DeployPath)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "ROLLBACK_MIGRATION_SHA256=$($rollbackPayload.MigrationSha256)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "ROLLBACK_SCHEMA_MIGRATION=$($rollbackPayload.SchemaMigration)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
@@ -281,7 +295,7 @@ jobs:
           server-computer-name: ${{ secrets.MONSTER_SERVER_COMPUTER_NAME }}
           server-username: ${{ secrets.MONSTER_SERVER_USERNAME }}
           server-password: ${{ secrets.MONSTER_SERVER_PASSWORD }}
-          source-path: ${{ env.RELEASE_PUBLISH_PATH }}
+          source-path: ${{ env.RELEASE_DEPLOY_PATH }}
           target-delete: true
 
       - name: Verify deployed version and readiness
@@ -322,7 +336,7 @@ jobs:
           server-computer-name: ${{ secrets.MONSTER_SERVER_COMPUTER_NAME }}
           server-username: ${{ secrets.MONSTER_SERVER_USERNAME }}
           server-password: ${{ secrets.MONSTER_SERVER_PASSWORD }}
-          source-path: ${{ env.ROLLBACK_PUBLISH_PATH }}
+          source-path: ${{ env.ROLLBACK_DEPLOY_PATH }}
           target-delete: true
 
       - name: Verify rollback and fail deployment
