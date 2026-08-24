@@ -7,7 +7,7 @@ namespace ApplyWise.Web.Models.ResumeBuilder;
 /// </summary>
 public sealed class ResumeDocument
 {
-    public const int CurrentSchemaVersion = 4;
+    public const int CurrentSchemaVersion = 5;
     public const string DefaultTemplateId = "classic";
 
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
@@ -61,6 +61,7 @@ public sealed class ExperienceEntry
     public string CompanyName { get; init; } = string.Empty;
     public string JobTitle { get; init; } = string.Empty;
     public string EmploymentType { get; init; } = string.Empty;
+    public string TechnologySkills { get; init; } = string.Empty;
     public string Location { get; init; } = string.Empty;
     public string StartDate { get; init; } = string.Empty;
     public string EndDate { get; init; } = string.Empty;

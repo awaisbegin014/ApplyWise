@@ -25,7 +25,8 @@ public sealed class AdminMonitoringTests
             "..", "..", "..", "..", "..", "src", "ApplyWise.Web", "appsettings.Production.json"));
 
         Assert.Contains("\"RequireMfa\": true", json, StringComparison.Ordinal);
-        Assert.Contains("awaisshaikhcs786@gmail.com", json, StringComparison.Ordinal);
+        Assert.Contains("__SET_OWNER_EMAIL__", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("@gmail.com", json, StringComparison.OrdinalIgnoreCase);
         Assert.IsAssignableFrom<IAuthorizationRequirement>(new AdminMfaRequirement());
     }
 
@@ -200,6 +201,81 @@ public sealed class AdminMonitoringTests
         Assert.True(nextCalled);
     }
 
+    [Theory]
+    [InlineData("/Identity/Account/Manage/Email", "GET", 302)]
+    [InlineData("/Identity/Account/Manage/ChangePassword", "POST", 403)]
+    [InlineData("/Identity/Account/Manage/DeletePersonalData", "POST", 403)]
+    public async Task Packaged_identity_management_routes_cannot_bypass_custom_controls(
+        string path,
+        string method,
+        int expectedStatus)
+    {
+        var context = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity(
+            [
+                new Claim(ClaimTypes.NameIdentifier, "candidate")
+            ], "Identity.Application"))
+        };
+        context.Request.Path = path;
+        context.Request.Method = method;
+        var nextCalled = false;
+        var middleware = CreateAdminOnlyMiddleware(() => nextCalled = true);
+
+        await middleware.InvokeAsync(context);
+
+        Assert.False(nextCalled);
+        Assert.Equal(expectedStatus, context.Response.StatusCode);
+        if (expectedStatus == StatusCodes.Status302Found)
+        {
+            Assert.Equal("/settings", context.Response.Headers.Location);
+        }
+    }
+
+    [Fact]
+    public async Task Authenticator_management_remains_available_for_mfa_enrollment()
+    {
+        var context = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity(
+            [
+                new Claim(ClaimTypes.NameIdentifier, "candidate")
+            ], "Identity.Application"))
+        };
+        context.Request.Path = "/Identity/Account/Manage/EnableAuthenticator";
+        context.Request.Method = HttpMethods.Get;
+        var nextCalled = false;
+        var middleware = CreateAdminOnlyMiddleware(() => nextCalled = true);
+
+        await middleware.InvokeAsync(context);
+
+        Assert.True(nextCalled);
+    }
+
+    [Theory]
+    [InlineData("/Identity/Account/Manage/EnableAuthenticator", "GET", 302)]
+    [InlineData("/Identity/Account/Manage/GenerateRecoveryCodes", "POST", 403)]
+    [InlineData("/Identity/Account/Manage/ResetAuthenticator", "POST", 403)]
+    public async Task Admin_authenticator_management_requires_current_session_mfa(
+        string path,
+        string method,
+        int expectedStatus)
+    {
+        var context = AdminContext(path, includeMfa: false);
+        context.Request.Method = method;
+        var nextCalled = false;
+        var middleware = CreateAdminOnlyMiddleware(() => nextCalled = true);
+
+        await middleware.InvokeAsync(context);
+
+        Assert.False(nextCalled);
+        Assert.Equal(expectedStatus, context.Response.StatusCode);
+        if (expectedStatus == StatusCodes.Status302Found)
+        {
+            Assert.Equal("/settings", context.Response.Headers.Location);
+        }
+    }
+
     [Fact]
     public async Task Admin_workspace_mutation_is_rejected_instead_of_redirected()
     {
@@ -254,7 +330,7 @@ public sealed class AdminMonitoringTests
     }
 
     [Fact]
-    public async Task Login_tracking_updates_account_activity_and_records_a_content_free_event()
+    public async Task Login_tracking_updates_bounded_account_activity_without_event_rows()
     {
         const string userId = "tracked-user";
         var dbOptions = new DbContextOptionsBuilder<ApplicationDbContext>()
@@ -272,18 +348,56 @@ public sealed class AdminMonitoringTests
         var recorder = new ProductEventRecorder(
             db,
             TimeProvider.System,
+            Options.Create(new ProductEventRetentionOptions()),
             NullLogger<ProductEventRecorder>.Instance);
         await recorder.RecordLoginAsync(userId, "password");
 
         var activity = await db.UserAccountActivities.SingleAsync();
-        var productEvent = await db.ProductEvents.SingleAsync();
         Assert.NotNull(activity.LastLoginAt);
         Assert.NotNull(activity.LastActivityAt);
         Assert.Equal(1, activity.TotalSuccessfulLogins);
         Assert.Equal("password", activity.LastLoginProvider);
-        Assert.Equal(ProductEventNames.LoginSucceeded, productEvent.Name);
-        Assert.Equal(userId, productEvent.UserId);
-        Assert.True(productEvent.Succeeded);
+        Assert.Empty(await db.ProductEvents.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Anonymous_failed_logins_are_not_persisted_as_unbounded_rows()
+    {
+        var dbOptions = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase("anonymous-login-events-" + Guid.NewGuid().ToString("N"))
+            .Options;
+        await using var db = new ApplicationDbContext(dbOptions);
+        var recorder = new ProductEventRecorder(
+            db,
+            TimeProvider.System,
+            Options.Create(new ProductEventRetentionOptions()),
+            NullLogger<ProductEventRecorder>.Instance);
+
+        await recorder.RecordAsync(
+            ProductEventNames.LoginFailed,
+            "password",
+            succeeded: false);
+
+        Assert.Empty(await db.ProductEvents.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Product_event_recorder_stops_at_the_global_storage_cap()
+    {
+        var dbOptions = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseInMemoryDatabase("product-event-cap-" + Guid.NewGuid().ToString("N"))
+            .Options;
+        await using var db = new ApplicationDbContext(dbOptions);
+        var recorder = new ProductEventRecorder(
+            db,
+            TimeProvider.System,
+            Options.Create(new ProductEventRetentionOptions { MaxStoredEvents = 1 }),
+            NullLogger<ProductEventRecorder>.Instance);
+
+        await recorder.RecordAsync(ProductEventNames.ResumeUploaded, "test");
+        await recorder.RecordAsync(ProductEventNames.ApplicationCreated, "test");
+
+        Assert.Single(await db.ProductEvents.ToListAsync());
     }
 
     [Fact]
@@ -496,5 +610,26 @@ public sealed class AdminMonitoringTests
         Assert.True(result.HasPreviousUserPage);
         Assert.False(result.HasNextUserPage);
         Assert.DoesNotContain(result.Users, user => user.UserId == "owner");
+    }
+
+    [Fact]
+    public async Task Sql_dashboard_aggregates_execute_on_the_release_schema_when_configured()
+    {
+        var connectionString = Environment.GetEnvironmentVariable(
+            "APPLYWISE_SQL_INTEGRATION_TEST_CONNECTION");
+        if (string.IsNullOrWhiteSpace(connectionString)) return;
+
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlServer(connectionString, sql => sql.EnableRetryOnFailure())
+            .Options;
+        await using var db = new ApplicationDbContext(options);
+        var service = new AdminDashboardService(
+            db,
+            TimeProvider.System,
+            Options.Create(new AdminAccessOptions()));
+
+        var result = await service.LoadAsync(7, null, 1);
+
+        Assert.Equal(7, result.DailyActivity.Count);
     }
 }

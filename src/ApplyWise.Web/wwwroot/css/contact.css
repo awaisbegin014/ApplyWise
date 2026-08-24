@@ -1,0 +1,198 @@
+.aw-contact-page {
+    overflow: clip;
+    background: #f8fafc;
+}
+
+.aw-contact-hero {
+    padding: 84px 0 108px;
+    border-bottom: 1px solid var(--aw-border, #dbe4f0);
+    background:
+        radial-gradient(circle at 92% 12%, rgba(209, 250, 229, .72), transparent 28%),
+        radial-gradient(circle at 6% 84%, rgba(219, 234, 254, .72), transparent 30%),
+        linear-gradient(145deg, #fff, #f8fafc 62%);
+}
+
+.aw-contact-grid {
+    display: grid;
+    grid-template-columns: minmax(0, .86fr) minmax(520px, 1.14fr);
+    align-items: start;
+    gap: clamp(58px, 7vw, 104px);
+}
+
+.aw-contact-grid > * { min-width: 0; }
+
+.aw-contact-copy {
+    position: sticky;
+    top: 142px;
+    padding-top: 24px;
+}
+
+.aw-contact-kicker {
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.aw-contact-kicker::before {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--aw-home-teal, #0f766e);
+    box-shadow: 0 0 0 5px rgba(15, 118, 110, .12);
+    content: "";
+}
+
+.aw-contact-copy h1 {
+    max-width: 680px;
+    margin: 0;
+    color: var(--aw-oxford-navy, #0f172a);
+    font-size: clamp(3rem, 5.4vw, 4.8rem);
+    line-height: 1.04;
+    letter-spacing: -.055em;
+}
+
+.aw-contact-copy > p {
+    max-width: 650px;
+    margin: 26px 0 0;
+    color: var(--aw-text-2, #475569);
+    font-size: 1.15rem;
+    line-height: 1.7;
+}
+
+.aw-contact-expectations {
+    display: grid;
+    gap: 18px;
+    margin-top: 38px;
+}
+
+.aw-contact-expectations > div {
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr);
+    align-items: start;
+    gap: 14px;
+}
+
+.aw-contact-expectations > div > span {
+    display: grid;
+    width: 42px;
+    height: 42px;
+    place-items: center;
+    color: var(--aw-primary, #2563eb);
+    border: 1px solid rgba(37, 99, 235, .18);
+    border-radius: 13px;
+    background: #eff6ff;
+    font-size: .8125rem;
+    font-weight: 800;
+}
+
+.aw-contact-expectations p {
+    display: flex;
+    margin: 1px 0 0;
+    flex-direction: column;
+}
+
+.aw-contact-expectations strong { color: var(--aw-oxford-navy, #0f172a); font-size: .98rem; }
+.aw-contact-expectations small { margin-top: 4px; color: var(--aw-text-2, #475569); font-size: .875rem; line-height: 1.55; }
+
+.aw-contact-form {
+    display: grid;
+    gap: 22px;
+    padding: clamp(32px, 4vw, 48px);
+    border: 1px solid var(--aw-border-strong, #bfdbfe);
+    border-radius: 28px;
+    background: rgba(255, 255, 255, .96);
+    box-shadow: 0 32px 70px -46px rgba(15, 23, 42, .48);
+}
+
+.aw-contact-form header { margin-bottom: 2px; }
+.aw-contact-form-label { color: var(--aw-primary, #2563eb); font-size: .75rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.aw-contact-form h2 { margin: 8px 0 7px; color: var(--aw-oxford-navy, #0f172a); font-size: clamp(1.9rem, 3vw, 2.5rem); letter-spacing: -.035em; }
+.aw-contact-form header p { margin: 0; color: var(--aw-muted, #64748b); font-size: .875rem; }
+
+.aw-contact-field-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+}
+
+.aw-contact-field { display: grid; gap: 8px; }
+.aw-contact-field label { color: var(--aw-oxford-navy, #0f172a); font-size: .875rem; font-weight: 750; }
+.aw-contact-field .form-control,
+.aw-contact-field .form-select { min-height: 50px; border-color: var(--aw-border, #dbe4f0); background-color: #fff; font-size: .95rem; }
+.aw-contact-field textarea.form-control { min-height: 176px; padding: 14px; resize: vertical; line-height: 1.6; }
+.aw-contact-field .form-control:focus,
+.aw-contact-field .form-select:focus { border-color: #60a5fa; box-shadow: 0 0 0 3px rgba(147, 197, 253, .35); }
+.aw-contact-field .text-danger { min-height: 18px; font-size: .78rem; }
+.aw-contact-field-help { display: flex; justify-content: space-between; gap: 12px; color: var(--aw-muted, #64748b); font-size: .75rem; }
+
+.aw-contact-validation-summary:empty,
+.aw-contact-validation-summary.validation-summary-valid { display: none; }
+.aw-contact-validation-summary.validation-summary-errors { padding: 13px 15px; color: #991b1b; border: 1px solid #fecaca; border-radius: 12px; background: #fef2f2; font-size: .875rem; }
+.aw-contact-validation-summary ul { margin: 0; padding-left: 20px; }
+
+.aw-contact-honeypot {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+}
+
+.aw-contact-safety {
+    margin: 0;
+    padding: 14px 16px;
+    color: var(--aw-text-2, #475569);
+    border-radius: 12px;
+    background: #f8fafc;
+    font-size: .8125rem;
+    line-height: 1.55;
+}
+.aw-contact-safety strong { color: var(--aw-oxford-navy, #0f172a); }
+.aw-contact-form > .btn { min-height: 58px; }
+.aw-contact-privacy { margin: -6px 0 0; color: var(--aw-muted, #64748b); font-size: .78rem; line-height: 1.55; text-align: center; }
+.aw-contact-privacy a { color: var(--aw-primary, #2563eb); font-weight: 700; }
+
+.aw-contact-guidance { padding: 92px 0 104px; background: #fff; }
+.aw-contact-guidance-heading { max-width: 760px; margin-bottom: 38px; }
+.aw-contact-guidance-heading h2 { margin: 10px 0 0; color: var(--aw-oxford-navy, #0f172a); font-size: clamp(2rem, 4vw, 3rem); letter-spacing: -.04em; }
+.aw-contact-guidance-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; }
+.aw-contact-guidance-grid article { padding: 28px; border: 1px solid var(--aw-border, #dbe4f0); border-radius: 20px; background: linear-gradient(155deg, #fff, #f8fafc); }
+.aw-contact-guidance-grid article > span { color: var(--aw-primary, #2563eb); font-size: .7rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.aw-contact-guidance-grid h3 { margin: 10px 0 9px; color: var(--aw-oxford-navy, #0f172a); font-size: 1.2rem; }
+.aw-contact-guidance-grid p { margin: 0; color: var(--aw-text-2, #475569); font-size: .925rem; line-height: 1.65; }
+.aw-required-marker { color: #b42318; font-weight: 900; }
+
+.aw-contact-sent-page { min-height: 70vh; }
+.aw-contact-sent { display: grid; min-height: 70vh; place-items: center; padding: 80px 24px 104px; background: radial-gradient(circle at 50% 24%, rgba(209, 250, 229, .82), transparent 36%), #f8fafc; }
+.aw-contact-sent-card { width: min(100%, 760px); padding: clamp(38px, 6vw, 68px); border: 1px solid var(--aw-border-strong, #bfdbfe); border-radius: 28px; background: #fff; box-shadow: 0 30px 70px -48px rgba(15, 23, 42, .5); text-align: center; }
+.aw-contact-sent-icon { display: grid; width: 68px; height: 68px; margin: 0 auto 26px; place-items: center; color: #047857; border-radius: 50%; background: #d1fae5; font-size: 1.6rem; font-weight: 900; }
+.aw-contact-sent-card h1 { margin: 12px auto 16px; color: var(--aw-oxford-navy, #0f172a); font-size: clamp(2.2rem, 5vw, 3.6rem); line-height: 1.08; letter-spacing: -.05em; }
+.aw-contact-sent-card p { max-width: 580px; margin: 0 auto; color: var(--aw-text-2, #475569); font-size: 1.05rem; line-height: 1.65; }
+.aw-contact-sent-card > div { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 30px; }
+.aw-contact-sent-card .btn { min-height: 56px; padding-inline: 24px; }
+
+@media (max-width: 960px) {
+    .aw-contact-hero { padding: 58px 0 76px; }
+    .aw-contact-grid { grid-template-columns: minmax(0, 1fr); gap: 48px; }
+    .aw-contact-copy { position: static; padding-top: 0; }
+    .aw-contact-copy > p { max-width: 760px; }
+}
+
+@media (max-width: 760px) {
+    .aw-contact-field-grid,
+    .aw-contact-guidance-grid { grid-template-columns: minmax(0, 1fr); }
+    .aw-contact-guidance { padding: 64px 0 72px; }
+}
+
+@media (max-width: 560px) {
+    .aw-contact-hero { padding: 38px 0 56px; }
+    .aw-contact-copy h1 { font-size: 2.45rem; }
+    .aw-contact-copy > p { margin-top: 18px; font-size: 1rem; }
+    .aw-contact-expectations { margin-top: 28px; }
+    .aw-contact-form { gap: 18px; padding: 26px 20px; border-radius: 22px; }
+    .aw-contact-field-help { align-items: flex-start; flex-direction: column; gap: 2px; }
+    .aw-contact-sent { padding: 52px 12px 72px; }
+    .aw-contact-sent-card { padding: 36px 22px; border-radius: 22px; }
+    .aw-contact-sent-card > div { flex-direction: column; }
+    .aw-contact-sent-card .btn { width: 100%; }
+}

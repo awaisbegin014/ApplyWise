@@ -18,7 +18,8 @@ public class JobApplicationsController(
     ApplicationDbContext dbContext,
     UserManager<IdentityUser> userManager,
     IProductEventRecorder events,
-    IWorkspaceQuotaService quotas) : Controller
+    IWorkspaceQuotaService quotas,
+    IWorkspaceQuotaGate quotaGate) : Controller
 {
     [HttpGet("")]
     public async Task<IActionResult> Index(JobApplicationIndexViewModel filters)
@@ -122,8 +123,28 @@ public class JobApplicationsController(
         ApplyForm(application, model);
         application.Status = ApplicationStatus.Applied;
 
-        dbContext.JobApplications.Add(application);
-        await dbContext.SaveChangesAsync();
+        var saved = await quotaGate.RunAsync(
+            WorkspaceQuotaResources.Applications,
+            userId,
+            async cancellationToken =>
+            {
+                if (!await quotas.CanCreateApplicationAsync(userId, cancellationToken))
+                {
+                    return false;
+                }
+
+                dbContext.JobApplications.Add(application);
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return true;
+            },
+            HttpContext.RequestAborted);
+        if (!saved)
+        {
+            ModelState.AddModelError(string.Empty, "Your workspace reached its application limit. Delete old applications before adding another.");
+            await PopulateResumesAsync(model);
+            return View(model);
+        }
+
         await events.RecordAsync(
             ProductEventNames.ApplicationCreated,
             "manual",
@@ -252,19 +273,25 @@ public class JobApplicationsController(
             return NotFound();
         }
 
-        await using var transaction = await dbContext.Database.BeginTransactionAsync();
-        await dbContext.ResumeAnalyses
-            .Where(analysis => analysis.UserId == application.UserId && analysis.JobApplicationId == application.Id)
-            .ExecuteDeleteAsync();
-        await dbContext.Interviews
-            .Where(interview => interview.UserId == application.UserId && interview.JobApplicationId == application.Id)
-            .ExecuteDeleteAsync();
-        await dbContext.JobScamChecks
-            .Where(check => check.UserId == application.UserId && check.JobApplicationId == application.Id)
-            .ExecuteDeleteAsync();
-        dbContext.JobApplications.Remove(application);
-        await dbContext.SaveChangesAsync();
-        await transaction.CommitAsync();
+        await quotaGate.RunAsync(
+            WorkspaceQuotaResources.Applications,
+            application.UserId,
+            async cancellationToken =>
+            {
+                await dbContext.ResumeAnalyses
+                    .Where(analysis => analysis.UserId == application.UserId && analysis.JobApplicationId == application.Id)
+                    .ExecuteDeleteAsync(cancellationToken);
+                await dbContext.Interviews
+                    .Where(interview => interview.UserId == application.UserId && interview.JobApplicationId == application.Id)
+                    .ExecuteDeleteAsync(cancellationToken);
+                await dbContext.JobScamChecks
+                    .Where(check => check.UserId == application.UserId && check.JobApplicationId == application.Id)
+                    .ExecuteDeleteAsync(cancellationToken);
+                dbContext.JobApplications.Remove(application);
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return true;
+            },
+            HttpContext.RequestAborted);
         TempData["SuccessMessage"] = $"{application.JobTitle} at {application.CompanyName} was deleted.";
         return RedirectToAction(nameof(Index));
     }
@@ -343,10 +370,17 @@ public class JobApplicationsController(
     {
         application.CompanyName = model.CompanyName.Trim();
         application.JobTitle = model.JobTitle.Trim();
+        application.JobLocation = Clean(model.JobLocation);
+        application.JobType = model.JobType;
+        application.SalaryRange = Clean(model.SalaryRange);
+        application.Source = model.Source;
+        application.JobUrl = Clean(model.JobUrl);
         application.JobDescription = Clean(model.JobDescription);
         application.Status = model.Status;
         application.ResumeId = model.ResumeId;
         application.AppliedDate = model.AppliedDate;
+        application.Deadline = model.Deadline;
+        application.Notes = Clean(model.Notes);
         application.CustomFieldsJson = SerializeCustomFields(model.CustomFields);
     }
 

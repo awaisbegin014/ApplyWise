@@ -2,12 +2,14 @@ using System.Security.Claims;
 using ApplyWise.Web.Data;
 using ApplyWise.Web.Models;
 using ApplyWise.Web.Services.Gmail;
+using ApplyWise.Web.Services.Security;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using System.Security.Cryptography;
 
 namespace ApplyWise.Web.Controllers;
 
@@ -16,12 +18,18 @@ namespace ApplyWise.Web.Controllers;
 public sealed class GmailConnectionsController(
     ApplicationDbContext dbContext,
     UserManager<IdentityUser> userManager,
+    SignInManager<IdentityUser> signInManager,
     IGmailCredentialProtector credentialProtector,
     IGmailImportService gmailImportService,
+    IApplicationLockProvider operationLocks,
     IHttpClientFactory httpClientFactory,
     IOptions<GoogleIntegrationOptions> googleOptions,
-    ILogger<GmailConnectionsController> logger) : Controller
+    ILogger<GmailConnectionsController> logger,
+    IWorkspaceQuotaGate? gmailStateGate = null) : Controller
 {
+    private readonly IWorkspaceQuotaGate _gmailStateGate =
+        gmailStateGate ?? new WorkspaceQuotaGate(dbContext);
+
     [HttpGet("failure")]
     public IActionResult Failure()
     {
@@ -32,35 +40,93 @@ public sealed class GmailConnectionsController(
 
     [HttpPost("connect")]
     [ValidateAntiForgeryToken]
-    public IActionResult Connect()
+    public async Task<IActionResult> Connect()
     {
-        if (!googleOptions.Value.IsConfigured)
+        if (!googleOptions.Value.IsGmailImportConfigured)
         {
             TempData["ImportError"] =
                 "Google integration is not configured on this ApplyWise deployment.";
             return RedirectToAction("Index", "ApplicationImports");
         }
 
-        var properties = new AuthenticationProperties
+        var user = await userManager.GetUserAsync(User);
+        if (user is null) return Challenge();
+        var flowId = RandomNumberGenerator.GetHexString(32);
+        await using (var operationLease = await operationLocks.TryAcquireAsync(
+            $"gmail-user:{user.Id}",
+            Timeout.InfiniteTimeSpan,
+            HttpContext.RequestAborted)
+            ?? throw new ResourceLockUnavailableException(
+                "The Gmail connection could not be locked for authorization."))
         {
-            RedirectUri = Url.Action(nameof(Callback))
-        };
+            var flowStored = await _gmailStateGate.RunAsync(
+                WorkspaceQuotaResources.GmailConnections,
+                user.Id,
+                async gateCancellationToken =>
+                {
+                    dbContext.ChangeTracker.Clear();
+                    if (!await dbContext.Users.AsNoTracking().AnyAsync(
+                            candidate => candidate.Id == user.Id,
+                            gateCancellationToken))
+                    {
+                        return false;
+                    }
+
+                    var flow = await dbContext.GmailOAuthFlows.SingleOrDefaultAsync(
+                        candidate => candidate.UserId == user.Id,
+                        gateCancellationToken);
+                    if (flow is null)
+                    {
+                        dbContext.GmailOAuthFlows.Add(new GmailOAuthFlow
+                        {
+                            UserId = user.Id,
+                            FlowId = flowId,
+                            StartedAt = DateTimeOffset.UtcNow
+                        });
+                    }
+                    else
+                    {
+                        flow.FlowId = flowId;
+                        flow.StartedAt = DateTimeOffset.UtcNow;
+                    }
+
+                    await dbContext.SaveChangesAsync(gateCancellationToken);
+                    return true;
+                },
+                HttpContext.RequestAborted);
+            if (!flowStored) return Challenge();
+        }
+
+        var properties = signInManager.ConfigureExternalAuthenticationProperties(
+            GmailAuthenticationDefaults.Scheme,
+            Url.Action(nameof(Callback)),
+            user.Id);
+        properties.Items[GmailAuthenticationDefaults.FlowIdProperty] = flowId;
         return Challenge(properties, GmailAuthenticationDefaults.Scheme);
     }
 
     [HttpGet("callback")]
     public async Task<IActionResult> Callback()
     {
-        var userId = userManager.GetUserId(User);
-        if (string.IsNullOrWhiteSpace(userId)) return Challenge();
+        if (!googleOptions.Value.IsGmailImportConfigured)
+        {
+            TempData["ImportError"] =
+                "Gmail import is not enabled on this ApplyWise deployment.";
+            return RedirectToAction("Index", "ApplicationImports");
+        }
 
-        var result = await HttpContext.AuthenticateAsync(IdentityConstants.ExternalScheme);
+        var user = await userManager.GetUserAsync(User);
+        if (user is null) return Challenge();
+
         try
         {
-            if (!result.Succeeded
-                || result.Principal is null
-                || result.Properties is null
-                || !result.Principal.HasClaim(
+            var info = await signInManager.GetExternalLoginInfoAsync(user.Id);
+            if (info is null
+                || !string.Equals(
+                    info.LoginProvider,
+                    GmailAuthenticationDefaults.Scheme,
+                    StringComparison.Ordinal)
+                || !info.Principal.HasClaim(
                     GmailAuthenticationDefaults.FlowClaimType,
                     GmailAuthenticationDefaults.FlowClaimValue))
             {
@@ -69,58 +135,162 @@ public sealed class GmailConnectionsController(
                 return RedirectToAction("Index", "ApplicationImports");
             }
 
-            var email = result.Principal.FindFirstValue(ClaimTypes.Email)?.Trim();
-            var refreshToken = result.Properties.GetTokenValue("refresh_token");
-            var connection = await dbContext.GmailConnections
-                .SingleOrDefaultAsync(
-                    item => item.UserId == userId,
+            var email = info.Principal.FindFirstValue(ClaimTypes.Email)?.Trim();
+            var refreshToken = info.AuthenticationTokens?
+                .FirstOrDefault(token => token.Name == "refresh_token")?
+                .Value;
+            var flowId = info.AuthenticationProperties is { } authenticationProperties
+                && authenticationProperties.Items.TryGetValue(
+                    GmailAuthenticationDefaults.FlowIdProperty,
+                    out var storedFlowId)
+                    ? storedFlowId
+                    : null;
+
+            if (string.IsNullOrWhiteSpace(email)
+                || string.IsNullOrWhiteSpace(flowId)
+                || flowId.Length != 64)
+            {
+                TempData["ImportError"] =
+                    "Google did not provide a valid Gmail connection response. Start a new connection request.";
+                return RedirectToAction("Index", "ApplicationImports");
+            }
+
+            await using (var operationLease = await operationLocks.TryAcquireAsync(
+                $"gmail-user:{user.Id}",
+                Timeout.InfiniteTimeSpan,
+                HttpContext.RequestAborted)
+                ?? throw new ResourceLockUnavailableException(
+                    "The Gmail connection could not be locked for authorization."))
+            {
+                var persistenceOutcome = await _gmailStateGate.RunAsync(
+                    WorkspaceQuotaResources.GmailConnections,
+                    user.Id,
+                    async gateCancellationToken =>
+                    {
+                        dbContext.ChangeTracker.Clear();
+                        var localUserStillExists = await dbContext.Users
+                            .AsNoTracking()
+                            .AnyAsync(
+                                candidate => candidate.Id == user.Id,
+                                gateCancellationToken);
+                        if (!localUserStillExists)
+                        {
+                            return GmailCallbackPersistenceOutcome.UserMissing;
+                        }
+
+                        var activeFlow = await dbContext.GmailOAuthFlows
+                            .SingleOrDefaultAsync(
+                                candidate => candidate.UserId == user.Id,
+                                gateCancellationToken);
+                        if (activeFlow is null
+                            || !activeFlow.FlowId.Equals(
+                                flowId,
+                                StringComparison.Ordinal))
+                        {
+                            return GmailCallbackPersistenceOutcome.StaleAuthorization;
+                        }
+
+                        var connection = await dbContext.GmailConnections
+                            .SingleOrDefaultAsync(
+                                item => item.UserId == user.Id,
+                                gateCancellationToken);
+                        if (connection?.LastErrorCode
+                            == GmailConnectionStates.RevocationPending)
+                        {
+                            dbContext.GmailOAuthFlows.Remove(activeFlow);
+                            await dbContext.SaveChangesAsync(gateCancellationToken);
+                            return GmailCallbackPersistenceOutcome.DisconnectionPending;
+                        }
+
+                        if (string.IsNullOrWhiteSpace(refreshToken)
+                            && connection is null)
+                        {
+                            dbContext.GmailOAuthFlows.Remove(activeFlow);
+                            await dbContext.SaveChangesAsync(gateCancellationToken);
+                            return GmailCallbackPersistenceOutcome.OfflineAccessMissing;
+                        }
+
+                        var now = DateTimeOffset.UtcNow;
+                        if (connection is null)
+                        {
+                            connection = new GmailConnection
+                            {
+                                UserId = user.Id,
+                                EmailAddress = email,
+                                ProtectedRefreshToken =
+                                    credentialProtector.Protect(refreshToken!),
+                                ConnectedAt = now,
+                                UpdatedAt = now,
+                                NextSyncAt = now,
+                                AutoAddHighConfidenceApplications = false
+                            };
+                            dbContext.GmailConnections.Add(connection);
+                        }
+                        else
+                        {
+                            connection.EmailAddress = email;
+                            if (!string.IsNullOrWhiteSpace(refreshToken))
+                            {
+                                connection.ProtectedRefreshToken =
+                                    credentialProtector.Protect(refreshToken);
+                            }
+                            connection.UpdatedAt = now;
+                            connection.NextSyncAt = now;
+                            connection.LastErrorCode = null;
+                        }
+
+                        dbContext.GmailOAuthFlows.Remove(activeFlow);
+                        await dbContext.SaveChangesAsync(gateCancellationToken);
+                        return GmailCallbackPersistenceOutcome.Saved;
+                    },
                     HttpContext.RequestAborted);
 
-            if (string.IsNullOrWhiteSpace(email))
-            {
-                TempData["ImportError"] =
-                    "Google did not provide the Gmail address for this connection.";
-                return RedirectToAction("Index", "ApplicationImports");
-            }
-
-            if (string.IsNullOrWhiteSpace(refreshToken) && connection is null)
-            {
-                TempData["ImportError"] =
-                    "Google did not provide offline access. Revoke ApplyWise in your Google Account and connect again.";
-                return RedirectToAction("Index", "ApplicationImports");
-            }
-
-            var now = DateTimeOffset.UtcNow;
-            if (connection is null)
-            {
-                connection = new GmailConnection
+                if (persistenceOutcome is
+                    GmailCallbackPersistenceOutcome.UserMissing
+                    or GmailCallbackPersistenceOutcome.DisconnectionPending
+                    or GmailCallbackPersistenceOutcome.StaleAuthorization)
                 {
-                    UserId = userId,
-                    EmailAddress = email,
-                    ProtectedRefreshToken = credentialProtector.Protect(refreshToken!),
-                    ConnectedAt = now,
-                    UpdatedAt = now,
-                    NextSyncAt = now,
-                    AutoAddHighConfidenceApplications = false
-                };
-                dbContext.GmailConnections.Add(connection);
-            }
-            else
-            {
-                connection.EmailAddress = email;
-                if (!string.IsNullOrWhiteSpace(refreshToken))
-                {
-                    connection.ProtectedRefreshToken =
-                        credentialProtector.Protect(refreshToken);
+                    if (!string.IsNullOrWhiteSpace(refreshToken))
+                    {
+                        await GmailTokenRevocation.TryRevokeTokenAsync(
+                            refreshToken,
+                            connectionId: null,
+                            httpClientFactory,
+                            logger,
+                            HttpContext.RequestAborted);
+                    }
+
+                    if (persistenceOutcome == GmailCallbackPersistenceOutcome.UserMissing)
+                    {
+                        await signInManager.SignOutAsync();
+                        TempData["ImportError"] =
+                            "Your ApplyWise account no longer exists. The new Gmail authorization was discarded.";
+                        return RedirectToPage("/Account/Login", new { area = "Identity" });
+                    }
+
+                    if (persistenceOutcome == GmailCallbackPersistenceOutcome.StaleAuthorization)
+                    {
+                        TempData["ImportError"] =
+                            "That Gmail authorization request is no longer active. Start a new connection request.";
+                        return RedirectToAction("Index", "ApplicationImports");
+                    }
+
+                    TempData["ImportError"] =
+                        "Gmail disconnection is already pending. The new Google authorization was discarded.";
+                    return RedirectToAction("Index", "ApplicationImports");
                 }
-                connection.UpdatedAt = now;
-                connection.NextSyncAt = now;
-                connection.LastErrorCode = null;
+
+                if (persistenceOutcome
+                    == GmailCallbackPersistenceOutcome.OfflineAccessMissing)
+                {
+                    TempData["ImportError"] =
+                        "Google did not provide offline access. Revoke ApplyWise in your Google Account and connect again.";
+                    return RedirectToAction("Index", "ApplicationImports");
+                }
             }
 
-            await dbContext.SaveChangesAsync(HttpContext.RequestAborted);
             var syncResult = await gmailImportService.SyncUserAsync(
-                userId,
+                user.Id,
                 HttpContext.RequestAborted);
             TempData[syncResult.Succeeded ? "ImportSuccess" : "ImportError"] =
                 syncResult.Message;
@@ -142,63 +312,99 @@ public sealed class GmailConnectionsController(
             .SingleOrDefaultAsync(
                 item => item.UserId == userId,
                 HttpContext.RequestAborted);
-        if (connection is null)
-        {
-            return RedirectToAction("Index", "ApplicationImports");
-        }
-
-        var revoked = false;
-        try
-        {
-            var token = credentialProtector.Unprotect(connection.ProtectedRefreshToken);
-            var client = httpClientFactory.CreateClient("GoogleOAuth");
-            using var request = new HttpRequestMessage(
-                HttpMethod.Post,
-                "https://oauth2.googleapis.com/revoke")
-            {
-                Content = new FormUrlEncodedContent(
-                    new Dictionary<string, string> { ["token"] = token })
-            };
-            using var response = await client.SendAsync(
-                request,
-                HttpCompletionOption.ResponseHeadersRead,
-                HttpContext.RequestAborted);
-            if (!response.IsSuccessStatusCode)
-            {
-                logger.LogWarning(
-                    "Google token revocation returned {StatusCode} for Gmail connection {ConnectionId}.",
-                    (int)response.StatusCode,
-                    connection.Id);
-            }
-            else
-            {
-                revoked = true;
-            }
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            logger.LogWarning(
-                exception,
-                "Google token revocation could not be completed for Gmail connection {ConnectionId}.",
-                connection.Id);
-        }
-
-        if (!revoked)
+        if (connection is not null)
         {
             connection.AutoAddHighConfidenceApplications = false;
             connection.NextSyncAt = DateTimeOffset.MaxValue;
-            connection.LastErrorCode = "revocation_pending";
+            connection.LastErrorCode = GmailConnectionStates.RevocationPending;
             connection.UpdatedAt = DateTimeOffset.UtcNow;
+            try
+            {
+                await dbContext.SaveChangesAsync(HttpContext.RequestAborted);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                // Account deletion or another disconnect may have removed the
+                // row. The authoritative check happens under the lifecycle lock.
+                dbContext.ChangeTracker.Clear();
+            }
+        }
+
+        await using var operationLease = await operationLocks.TryAcquireAsync(
+            $"gmail-user:{userId}",
+            Timeout.InfiniteTimeSpan,
+            HttpContext.RequestAborted)
+            ?? throw new ResourceLockUnavailableException(
+                "The Gmail connection could not be locked for disconnection.");
+
+        dbContext.ChangeTracker.Clear();
+        var pendingFlow = await dbContext.GmailOAuthFlows
+            .SingleOrDefaultAsync(
+                item => item.UserId == userId,
+                HttpContext.RequestAborted);
+        if (pendingFlow is not null)
+        {
+            dbContext.GmailOAuthFlows.Remove(pendingFlow);
+        }
+        connection = await dbContext.GmailConnections
+            .SingleOrDefaultAsync(
+                item => item.UserId == userId,
+                HttpContext.RequestAborted);
+        if (connection is null)
+        {
             await dbContext.SaveChangesAsync(HttpContext.RequestAborted);
-            TempData["ImportError"] =
-                "Gmail syncing was disabled, but Google did not confirm token revocation. Revoke ApplyWise from your Google Account permissions, then try disconnecting again.";
+            TempData["ImportSuccess"] = "Gmail is already disconnected.";
             return RedirectToAction("Index", "ApplicationImports");
         }
 
-        dbContext.GmailConnections.Remove(connection);
+        // A sync that was already running may have written its completion state
+        // before releasing the cross-instance lease. Reassert the user's intent
+        // after that sync has fully stopped and before touching the Google token.
+        connection.AutoAddHighConfidenceApplications = false;
+        connection.NextSyncAt = DateTimeOffset.MaxValue;
+        connection.LastErrorCode = GmailConnectionStates.RevocationPending;
+        connection.UpdatedAt = DateTimeOffset.UtcNow;
         await dbContext.SaveChangesAsync(HttpContext.RequestAborted);
-        TempData["ImportSuccess"] =
-            "Gmail was disconnected and pending email imports were removed. Accepted applications were kept.";
+
+        var revoked = await GmailTokenRevocation.TryRevokeStoredTokenAsync(
+            connection,
+            credentialProtector,
+            httpClientFactory,
+            logger,
+            HttpContext.RequestAborted);
+
+        dbContext.ChangeTracker.Clear();
+        var revokedConnection = await dbContext.GmailConnections
+            .SingleOrDefaultAsync(
+                item => item.Id == connection.Id && item.UserId == userId,
+                HttpContext.RequestAborted);
+        if (revokedConnection is not null)
+        {
+            dbContext.GmailConnections.Remove(revokedConnection);
+        }
+        await dbContext.SaveChangesAsync(HttpContext.RequestAborted);
+        if (revoked)
+        {
+            TempData["ImportSuccess"] =
+                "Gmail was disconnected and pending email imports were removed. Accepted applications were kept.";
+        }
+        else
+        {
+            // Never retain a usable local token merely because the remote
+            // endpoint was unavailable. The user can finish revocation in
+            // Google Account permissions without risking a future local sync.
+            TempData["ImportError"] =
+                "Gmail was disconnected locally, but Google did not confirm revocation. Remove ApplyWise from your Google Account permissions to finish revoking access.";
+        }
         return RedirectToAction("Index", "ApplicationImports");
+    }
+
+    private enum GmailCallbackPersistenceOutcome
+    {
+        Saved,
+        UserMissing,
+        StaleAuthorization,
+        DisconnectionPending,
+        OfflineAccessMissing
     }
 }

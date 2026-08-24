@@ -1,13 +1,13 @@
 @model ApplyWise.Web.ViewModels.JobApplications.JobApplicationDetailsViewModel
 @{ ViewData["Title"] = "Delete Application"; }
 
-<div class="page-heading"><div><h1>Delete Application</h1><p>Review this application before removing it.</p></div></div>
+<div class="page-heading"><div><h1>Delete application</h1><p>Review this application before removing it.</p></div></div>
 <section class="panel confirmation-panel">
     <span class="danger-mark" aria-hidden="true">!</span>
     <h3>Delete @Model.JobTitle?</h3>
     <p>This permanently removes your application record for <strong>@Model.CompanyName</strong>. Your linked resume will not be deleted.</p>
     <form asp-action="DeleteConfirmed" asp-route-id="@Model.Id" method="post" class="form-actions">
-        <button class="btn btn-danger" type="submit">Delete Application</button>
+        <button class="btn btn-danger" type="submit">Delete application</button>
         <a class="btn btn-outline-secondary" asp-action="Details" asp-route-id="@Model.Id">Cancel</a>
     </form>
 </section>

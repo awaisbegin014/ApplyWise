@@ -39,7 +39,17 @@ public class ResendEmailConfirmationModel(
             return Page();
         }
 
-        securityRequests.TryQueue(Input.Email, AccountSecurityAction.ConfirmEmail);
+        if (!securityRequests.TryQueue(
+                Input.Email,
+                AccountSecurityAction.ConfirmEmail))
+        {
+            Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+            Response.Headers.RetryAfter = "30";
+            ModelState.AddModelError(
+                string.Empty,
+                "Email delivery is busy. Wait 30 seconds and try again.");
+            return Page();
+        }
 
         // Always continue to the same screen so this form cannot reveal registered email addresses.
         return RedirectToPage(

@@ -8,10 +8,11 @@
     <a class="back-link" asp-action="Index">← Back to application workspace</a>
     <section class="aw-detail-hero aw-slide-up">
         <div class="aw-detail-identity"><span class="aw-company-avatar aw-company-avatar-large">@Initial(Model.CompanyName)</span><div><span class="aw-status @StatusClass(Model.Status)">@Model.Status.GetDisplayName()</span><h1>@Model.JobTitle</h1><p>@Model.CompanyName @if (!string.IsNullOrWhiteSpace(Model.JobLocation)) { <span>· @Model.JobLocation</span> }</p></div></div>
-        <div class="aw-detail-actions"><a class="btn btn-primary" asp-action="Edit" asp-route-id="@Model.Id">Edit Application</a><a class="btn btn-secondary-soft" asp-controller="BestResumePicker" asp-action="Index" asp-route-jobApplicationId="@Model.Id"><svg class="ui-icon"><use href="#i-match" /></svg>Find Best Resume</a><a class="aw-more-link" asp-action="Delete" asp-route-id="@Model.Id">Delete</a></div>
+        <div class="aw-detail-actions"><a class="btn btn-primary" asp-action="Edit" asp-route-id="@Model.Id">Edit application</a><a class="btn btn-secondary-soft" asp-controller="BestResumePicker" asp-action="Index" asp-route-jobApplicationId="@Model.Id"><svg class="ui-icon"><use href="#i-match" /></svg>Find best resume</a><a class="aw-more-link" asp-action="Delete" asp-route-id="@Model.Id">Delete</a></div>
     </section>
 
     @if (TempData["SuccessMessage"] is string successMessage) { <div class="alert app-alert aw-success-toast" role="status"><span>✓</span>@successMessage</div> }
+    @if (TempData["ErrorMessage"] is string errorMessage) { <div class="alert app-alert" role="alert">@errorMessage</div> }
 
     <section class="aw-panel aw-timeline-panel aw-slide-up">
         <div class="aw-section-heading aw-status-heading"><div><span class="aw-kicker">Application progress</span><h3>Where this opportunity stands</h3></div><form class="aw-status-update-form" asp-action="UpdateStatus" asp-route-id="@Model.Id" method="post"><label class="visually-hidden" for="application-status">Application status</label><select id="application-status" name="status" class="form-select" asp-for="Status" asp-items="Html.GetEnumSelectList<ApplicationStatus>()"></select><button class="btn btn-primary btn-sm" type="submit">Update status</button></form></div>
@@ -39,7 +40,7 @@
 
     <div class="aw-detail-grid">
         <section class="aw-panel aw-slide-up">
-            <div class="aw-section-heading"><div><span class="aw-kicker">Interview plan</span><h3>Interviews</h3><p>Prep and outcomes connected to this role.</p></div><a class="btn btn-secondary-soft btn-sm" asp-controller="Interviews" asp-action="Create" asp-route-jobApplicationId="@Model.Id">+ Add Interview</a></div>
+            <div class="aw-section-heading"><div><span class="aw-kicker">Interview plan</span><h3>Interviews</h3><p>Prep and outcomes connected to this role.</p></div><a class="btn btn-secondary-soft btn-sm" asp-controller="Interviews" asp-action="Create" asp-route-jobApplicationId="@Model.Id">+ Add interview</a></div>
             @if (interviews.Count == 0) { <div class="aw-compact-state"><span class="aw-stat-icon purple"><svg class="ui-icon"><use href="#i-calendar" /></svg></span><div><strong>No interviews yet</strong><p>Add one when the conversation is scheduled.</p></div></div> }
             else { <div class="aw-action-stack">@foreach (var interview in interviews) { <a class="aw-action-card" asp-controller="Interviews" asp-action="Details" asp-route-id="@interview.Id"><span class="aw-action-mark purple"><svg class="ui-icon"><use href="#i-calendar" /></svg></span><span><b>@interview.InterviewType.GetDisplayName()</b><small>@interview.Status.GetDisplayName()</small></span><time>@interview.ScheduledAt.ToLocalTime().ToString("MMM d, h:mm tt")</time></a> }</div> }
         </section>

@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace ApplyWise.Web.Controllers;
 
@@ -68,7 +69,7 @@ public class ProfileController(
         return File(await System.IO.File.ReadAllBytesAsync(avatarPath, HttpContext.RequestAborted), "image/jpeg");
     }
 
-    [HttpPost("avatar"), ValidateAntiForgeryToken, RequestSizeLimit(MaxAvatarSizeBytes + 64 * 1024)]
+    [HttpPost("avatar"), ValidateAntiForgeryToken, EnableRateLimiting("uploads"), RequestSizeLimit(MaxAvatarSizeBytes + 64 * 1024)]
     public async Task<IActionResult> Avatar(IFormFile? file)
     {
         if (file is null || file.Length <= 0)
@@ -82,19 +83,19 @@ public class ProfileController(
             return RedirectToAction(nameof(Index));
         }
 
-        await using var stream = new MemoryStream((int)file.Length);
-        await file.CopyToAsync(stream, HttpContext.RequestAborted);
-        var bytes = stream.ToArray();
-        var contentType = DetectImageContentType(bytes);
-        if (contentType is null)
+        var bytes = new byte[(int)file.Length];
+        await using var stream = file.OpenReadStream();
+        await stream.ReadExactlyAsync(bytes, HttpContext.RequestAborted);
+        var image = AvatarImageInspector.Inspect(bytes);
+        if (image is null)
         {
-            TempData["ErrorMessage"] = "That file is not a valid PNG, JPEG, or WebP picture.";
+            TempData["ErrorMessage"] = "Choose a valid PNG, JPEG, or WebP picture no larger than 4,096 pixels per side.";
             return RedirectToAction(nameof(Index));
         }
 
         var profile = await GetOrCreateAsync();
         profile.AvatarData = bytes;
-        profile.AvatarContentType = contentType;
+        profile.AvatarContentType = image.ContentType;
         profile.SelectedAvatarId = null;
         profile.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync();
@@ -133,10 +134,22 @@ public class ProfileController(
     {
         var profile = await db.CareerProfiles.AsNoTracking().SingleOrDefaultAsync(p => p.UserId == GetUserId());
         var model = profile is null ? new ProfileEditViewModel { FullName = User.Identity?.Name?.Split('@')[0] ?? string.Empty } : new ProfileEditViewModel
-        { FullName = profile.FullName, Gender = profile.Gender, DateOfBirth = profile.DateOfBirth, CareerStage = profile.CareerStage, Institution = profile.Institution, DegreeProgram = profile.DegreeProgram,
-            FieldOfStudy = profile.FieldOfStudy, GraduationYear = profile.GraduationYear, CurrentSemester = profile.CurrentSemester,
-            PreferredLocations = profile.PreferredLocations, PreferredWorkModes = profile.PreferredWorkModes,
-            Skills = profile.Skills, CareerInterests = profile.CareerInterests, AcademicHighlights = profile.AcademicHighlights };
+        {
+            FullName = profile.FullName,
+            Gender = profile.Gender,
+            DateOfBirth = profile.DateOfBirth,
+            CareerStage = profile.CareerStage,
+            Institution = profile.Institution,
+            DegreeProgram = profile.DegreeProgram,
+            FieldOfStudy = profile.FieldOfStudy,
+            GraduationYear = profile.GraduationYear,
+            CurrentSemester = profile.CurrentSemester,
+            PreferredLocations = profile.PreferredLocations,
+            PreferredWorkModes = profile.PreferredWorkModes,
+            Skills = profile.Skills,
+            CareerInterests = profile.CareerInterests,
+            AcademicHighlights = profile.AcademicHighlights
+        };
         PopulateAvatarPresentation(model, profile);
         return model;
     }
@@ -210,14 +223,4 @@ public class ProfileController(
         };
     }
 
-    private static string? DetectImageContentType(ReadOnlySpan<byte> bytes)
-    {
-        ReadOnlySpan<byte> pngSignature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
-        if (bytes.StartsWith(pngSignature)) return "image/png";
-        if (bytes.Length >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF) return "image/jpeg";
-        if (bytes.Length >= 12
-            && bytes[..4].SequenceEqual("RIFF"u8)
-            && bytes.Slice(8, 4).SequenceEqual("WEBP"u8)) return "image/webp";
-        return null;
-    }
 }

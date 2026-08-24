@@ -6,6 +6,9 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.RateLimiting;
 using ApplyWise.Web.Services.Monitoring;
+using ApplyWise.Web.Services.Admin;
+using ApplyWise.Web.Services.Security;
+using Microsoft.Extensions.Options;
 
 namespace ApplyWise.Web.Areas.Identity.Pages.Account;
 
@@ -15,13 +18,16 @@ public class RegisterConfirmationModel(
     IAccountSecurityCodeService securityCodes,
     IAccountSecurityRequestQueue securityRequests,
     IProductEventRecorder events,
+    IOptions<AdminAccessOptions> adminOptions,
+    ILoginTimingProtector timingProtector,
+    IApplicationLockProvider operationLocks,
     ILogger<RegisterConfirmationModel> logger) : PageModel
 {
     [BindProperty]
     public InputModel Input { get; set; } = new();
 
     [TempData]
-    public string? ConfirmationDeliveryError { get; set; }
+    public string? ConfirmationDeliveryMessage { get; set; }
 
     public bool Succeeded { get; private set; }
     public string? DeliveryMessage { get; private set; }
@@ -38,6 +44,18 @@ public class RegisterConfirmationModel(
         [Display(Name = "Verification code")]
         public string Code { get; set; } = string.Empty;
 
+        [Required]
+        [StringLength(100, MinimumLength = PasswordRequirements.MinimumLength)]
+        [StrongPassword]
+        [DataType(DataType.Password)]
+        [Display(Name = "New password")]
+        public string Password { get; set; } = string.Empty;
+
+        [DataType(DataType.Password)]
+        [Compare(nameof(Password), ErrorMessage = "The password and confirmation password do not match.")]
+        [Display(Name = "Confirm new password")]
+        public string ConfirmPassword { get; set; } = string.Empty;
+
         public string? ReturnUrl { get; set; }
     }
 
@@ -51,12 +69,27 @@ public class RegisterConfirmationModel(
         Input.Email = email.Trim();
         Input.ReturnUrl = GetSafeReturnUrl(returnUrl);
         PrepareLinks();
-        DeliveryMessage = ConfirmationDeliveryError;
+        DeliveryMessage = ConfirmationDeliveryMessage;
 
         return Page();
     }
 
     public async Task<IActionResult> OnPostAsync()
+    {
+        var startedAt = System.Diagnostics.Stopwatch.GetTimestamp();
+        try
+        {
+            return await ConfirmRegistrationAsync();
+        }
+        finally
+        {
+            await timingProtector.EnforceMinimumResponseTimeAsync(
+                startedAt,
+                HttpContext.RequestAborted);
+        }
+    }
+
+    private async Task<IActionResult> ConfirmRegistrationAsync()
     {
         Input.Email = Input.Email.Trim();
         Input.ReturnUrl = GetSafeReturnUrl(Input.ReturnUrl);
@@ -67,8 +100,16 @@ public class RegisterConfirmationModel(
             return Page();
         }
 
+        // Keep retention from deleting an old pending account after its code is
+        // consumed but before Identity commits the confirmation.
+        await using var operationLease = await operationLocks.TryAcquireAsync(
+            PendingRegistrationRetention.OperationLockResource,
+            TimeSpan.FromSeconds(5),
+            HttpContext.RequestAborted) ?? throw new ResourceLockUnavailableException(
+                "Account verification is busy. Try again shortly.");
+
         var user = await userManager.FindByEmailAsync(Input.Email);
-        if (user is null)
+        if (user is null || adminOptions.Value.Contains(Input.Email))
         {
             AddInvalidCodeError();
             return Page();
@@ -89,6 +130,23 @@ public class RegisterConfirmationModel(
         if (!verification.Succeeded || verification.CodeId is null)
         {
             AddInvalidCodeError();
+            return Page();
+        }
+
+        // Email possession, not whichever password happened to be submitted
+        // first, owns an unconfirmed account. Replace the pending credential
+        // before confirmation to prevent pre-registration account hijacking.
+        var passwordToken = await userManager.GeneratePasswordResetTokenAsync(user);
+        var passwordResult = await userManager.ResetPasswordAsync(
+            user,
+            passwordToken,
+            Input.Password);
+        if (!passwordResult.Succeeded)
+        {
+            logger.LogWarning(
+                "Credential finalization failed after a valid verification code for user {UserId}.",
+                user.Id);
+            AddIdentityErrors(passwordResult);
             return Page();
         }
 
@@ -129,7 +187,17 @@ public class RegisterConfirmationModel(
             return Page();
         }
 
-        securityRequests.TryQueue(Input.Email, AccountSecurityAction.ConfirmEmail);
+        if (!securityRequests.TryQueue(
+                Input.Email,
+                AccountSecurityAction.ConfirmEmail))
+        {
+            Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+            Response.Headers.RetryAfter = "30";
+            ModelState.AddModelError(
+                string.Empty,
+                "Email delivery is busy. Wait 30 seconds and try again.");
+            return Page();
+        }
         DeliveryMessage = "If an account is waiting for verification, a new six-digit code will arrive shortly.";
         return Page();
     }
@@ -138,7 +206,17 @@ public class RegisterConfirmationModel(
     {
         Succeeded = true;
         Input.Code = string.Empty;
+        Input.Password = string.Empty;
+        Input.ConfirmPassword = string.Empty;
         DeliveryMessage = "Your email is verified. You can now log in securely.";
+    }
+
+    private void AddIdentityErrors(IdentityResult result)
+    {
+        foreach (var error in result.Errors)
+        {
+            ModelState.AddModelError("Input.Password", error.Description);
+        }
     }
 
     private void AddInvalidCodeError() =>

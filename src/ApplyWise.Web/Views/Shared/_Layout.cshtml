@@ -10,10 +10,18 @@
     var isIdentityPage = string.Equals(ViewContext.RouteData.Values["area"]?.ToString(), "Identity", StringComparison.OrdinalIgnoreCase);
     var controller = ViewContext.RouteData.Values["controller"]?.ToString();
     var action = ViewContext.RouteData.Values["action"]?.ToString();
-    var isMarketingHome = !isAuthenticated
-        && !isIdentityPage
-        && string.Equals(controller, "Home", StringComparison.OrdinalIgnoreCase)
-        && string.Equals(action, "Index", StringComparison.OrdinalIgnoreCase);
+    var isMarketingPage = !isIdentityPage
+        && ((string.Equals(controller, "Home", StringComparison.OrdinalIgnoreCase)
+            && (string.Equals(action, "Index", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(action, "JobTracker", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(action, "ResumeMatch", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(action, "ResumeBuilder", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(action, "HowItWorks", StringComparison.OrdinalIgnoreCase)))
+            || string.Equals(controller, "Contact", StringComparison.OrdinalIgnoreCase));
+    var isAdminContactPage = string.Equals(controller, "Admin", StringComparison.OrdinalIgnoreCase)
+        && action is "ContactMessages" or "ContactMessage" or "SetContactMessageReadState";
+    var isAdminConsolePage = string.Equals(controller, "Admin", StringComparison.OrdinalIgnoreCase)
+        && !isAdminContactPage;
     var metaDescription = ViewData["MetaDescription"]?.ToString()
         ?? "ApplyWise helps job seekers track applications, choose the right resume, and apply smarter.";
 }
@@ -49,7 +57,7 @@
     @await RenderSectionAsync("Styles", required: false)
     <link rel="stylesheet" href="~/css/theme.css" asp-append-version="true" />
 </head>
-<body class="@(isAuthenticated ? "app-body" : isIdentityPage ? "public-body identity-body" : isMarketingHome ? "public-body home-body" : "public-body")">
+<body class="@(isMarketingPage ? "public-body home-body" : isAuthenticated ? "app-body" : isIdentityPage ? "public-body identity-body" : "public-body")">
 <svg class="icon-sprite" aria-hidden="true">
     <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></symbol>
     <symbol id="i-briefcase" viewBox="0 0 24 24"><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 10h18M5 7h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z"/></symbol>
@@ -65,7 +73,7 @@
     <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M14 7l5 5-5 5"/></symbol>
 </svg>
 <a class="skip-link" href="#main-content">Skip to main content</a>
-@if (isAuthenticated)
+@if (isAuthenticated && !isMarketingPage)
 {
     <div class="app-shell">
         <aside class="app-sidebar" id="appSidebar">
@@ -76,26 +84,44 @@
             else
             {
                 <a class="brand" asp-controller="Dashboard" asp-action="Index"><img class="brand-mark" src="~/images/applywise-logo-v2.png" width="34" height="34" alt="" /><span>ApplyWise</span></a>
+                <a class="btn btn-primary sidebar-primary-action" asp-controller="JobApplications" asp-action="Create"><svg class="ui-icon" aria-hidden="true"><use href="#i-plus" /></svg><span>Add application</span></a>
             }
             <nav class="sidebar-nav" aria-label="Main navigation">
                 @if (isAdmin)
                 {
-                    <a class="@(controller == "Admin" ? "active" : null)" aria-current="@(controller == "Admin" ? "page" : null)" asp-controller="Admin" asp-action="Index"><svg class="ui-icon"><use href="#i-grid" /></svg>Owner console</a>
+                    <a class="@(isAdminConsolePage ? "active" : null)" aria-current="@(isAdminConsolePage ? "page" : null)" asp-controller="Admin" asp-action="Index"><svg class="ui-icon"><use href="#i-grid" /></svg>Owner console</a>
+                    <a class="@(isAdminContactPage ? "active" : null)" aria-current="@(isAdminContactPage ? "page" : null)" asp-controller="Admin" asp-action="ContactMessages"><svg class="ui-icon"><use href="#i-mail" /></svg>Contact inbox</a>
                     <a class="@(controller == "Dashboard" && action == "Settings" ? "active" : null)" aria-current="@(controller == "Dashboard" && action == "Settings" ? "page" : null)" asp-controller="Dashboard" asp-action="Settings"><svg class="ui-icon"><use href="#i-settings" /></svg>Owner security</a>
                 }
                 else
                 {
-                <a class="@(controller == "Dashboard" && action != "Settings" ? "active" : null)" aria-current="@(controller == "Dashboard" && action != "Settings" ? "page" : null)" asp-controller="Dashboard" asp-action="Index"><svg class="ui-icon"><use href="#i-grid" /></svg>Dashboard</a>
-                <a class="@(controller == "JobApplications" ? "active" : null)" aria-current="@(controller == "JobApplications" ? "page" : null)" asp-controller="JobApplications" asp-action="Index"><svg class="ui-icon"><use href="#i-briefcase" /></svg>Applications</a>
-                <a class="@(controller is "ApplicationImports" or "GmailConnections" ? "active" : null)" aria-current="@(controller is "ApplicationImports" or "GmailConnections" ? "page" : null)" asp-controller="ApplicationImports" asp-action="Index"><svg class="ui-icon"><use href="#i-mail" /></svg>Imports</a>
-                <a class="@(controller == "Resumes" ? "active" : null)" aria-current="@(controller == "Resumes" ? "page" : null)" asp-controller="Resumes" asp-action="Index"><svg class="ui-icon"><use href="#i-file" /></svg>Resumes</a>
-                <a class="@(controller == "ResumeBuilder" ? "active" : null)" aria-current="@(controller == "ResumeBuilder" ? "page" : null)" asp-controller="ResumeBuilder" asp-action="Index"><svg class="ui-icon"><use href="#i-edit-file" /></svg>Resume Builder</a>
-                <a class="@(controller is "ResumeAnalyzer" or "BestResumePicker" ? "active" : null)" aria-current="@(controller is "ResumeAnalyzer" or "BestResumePicker" ? "page" : null)" asp-controller="ResumeAnalyzer" asp-action="Index"><svg class="ui-icon"><use href="#i-match" /></svg>Resume tools</a>
-                <a class="@(controller == "Interviews" ? "active" : null)" aria-current="@(controller == "Interviews" ? "page" : null)" asp-controller="Interviews" asp-action="Index"><svg class="ui-icon"><use href="#i-calendar" /></svg>Interviews</a>
-                <a class="@(controller == "Dashboard" && action == "Settings" ? "active" : null)" aria-current="@(controller == "Dashboard" && action == "Settings" ? "page" : null)" asp-controller="Dashboard" asp-action="Settings"><svg class="ui-icon"><use href="#i-settings" /></svg>Settings</a>
-                <a class="@(controller == "Profile" ? "active" : null)" aria-current="@(controller == "Profile" ? "page" : null)" asp-controller="Profile" asp-action="Index"><svg class="ui-icon"><use href="#i-user" /></svg>Profile</a>
+                    <div class="sidebar-nav-group" role="group" aria-labelledby="nav-track-label">
+                        <span class="sidebar-nav-label" id="nav-track-label">Track</span>
+                        <a class="@(controller == "Dashboard" && action != "Settings" ? "active" : null)" aria-current="@(controller == "Dashboard" && action != "Settings" ? "page" : null)" asp-controller="Dashboard" asp-action="Index"><svg class="ui-icon"><use href="#i-grid" /></svg>Dashboard</a>
+                        <a class="@(controller == "JobApplications" ? "active" : null)" aria-current="@(controller == "JobApplications" ? "page" : null)" asp-controller="JobApplications" asp-action="Index"><svg class="ui-icon"><use href="#i-briefcase" /></svg>Applications</a>
+                        <a class="@(controller is "ApplicationImports" or "GmailConnections" ? "active" : null)" aria-current="@(controller is "ApplicationImports" or "GmailConnections" ? "page" : null)" asp-controller="ApplicationImports" asp-action="Index"><svg class="ui-icon"><use href="#i-mail" /></svg>Imports</a>
+                        <a class="@(controller == "Interviews" ? "active" : null)" aria-current="@(controller == "Interviews" ? "page" : null)" asp-controller="Interviews" asp-action="Index"><svg class="ui-icon"><use href="#i-calendar" /></svg>Interviews</a>
+                    </div>
+                    <div class="sidebar-nav-group" role="group" aria-labelledby="nav-resume-label">
+                        <span class="sidebar-nav-label" id="nav-resume-label">Resume</span>
+                        <a class="@(controller == "Resumes" ? "active" : null)" aria-current="@(controller == "Resumes" ? "page" : null)" asp-controller="Resumes" asp-action="Index"><svg class="ui-icon"><use href="#i-file" /></svg>Resume library</a>
+                        <a class="@(controller == "ResumeBuilder" ? "active" : null)" aria-current="@(controller == "ResumeBuilder" ? "page" : null)" asp-controller="ResumeBuilder" asp-action="Index"><svg class="ui-icon"><use href="#i-edit-file" /></svg>Resume builder</a>
+                        <a class="@(controller is "ResumeAnalyzer" or "BestResumePicker" ? "active" : null)" aria-current="@(controller is "ResumeAnalyzer" or "BestResumePicker" ? "page" : null)" asp-controller="ResumeAnalyzer" asp-action="Index"><svg class="ui-icon"><use href="#i-match" /></svg>Resume tools</a>
+                    </div>
+                    <div class="sidebar-nav-group" role="group" aria-labelledby="nav-account-label">
+                        <span class="sidebar-nav-label" id="nav-account-label">Account</span>
+                        <a class="@(controller == "Profile" ? "active" : null)" aria-current="@(controller == "Profile" ? "page" : null)" asp-controller="Profile" asp-action="Index"><svg class="ui-icon"><use href="#i-user" /></svg>Profile</a>
+                        <a class="@(controller == "Dashboard" && action == "Settings" ? "active" : null)" aria-current="@(controller == "Dashboard" && action == "Settings" ? "page" : null)" asp-controller="Dashboard" asp-action="Settings"><svg class="ui-icon"><use href="#i-settings" /></svg>Settings</a>
+                    </div>
                 }
             </nav>
+            @if (!isAdmin)
+            {
+                <div class="sidebar-guide">
+                    <img src="~/images/wiso.jpg" width="40" height="40" alt="" />
+                    <span><strong>Private workspace</strong><small>Your resumes and job-search data stay tied to your account.</small></span>
+                </div>
+            }
         </aside>
         <div class="app-main">
             <header class="topbar">
@@ -111,22 +137,33 @@
 }
 else
 {
-    @if (isMarketingHome)
+    @if (isMarketingPage)
     {
         <header class="public-header aw-public-header" data-home-header>
             <div class="aw-home-nav-shell">
-                <a class="brand aw-home-brand" asp-controller="Home" asp-action="Index" aria-label="ApplyWise home"><img class="brand-mark" src="~/images/applywise-logo-v2.png" width="34" height="34" alt="" /><span>ApplyWise</span></a>
+                <a class="brand aw-home-brand" asp-controller="Home" asp-action="Index" aria-label="ApplyWise home"><img class="brand-mark" src="~/images/applywise-logo-v2.png" width="34" height="34" alt="" /><span class="visually-hidden">ApplyWise</span></a>
                 <button class="aw-home-nav-toggle" type="button" aria-expanded="false" aria-controls="public-navigation" aria-label="Open navigation" data-home-nav-toggle hidden>
                     <span></span><span></span><span></span>
                 </button>
                 <nav class="aw-home-nav" id="public-navigation" aria-label="Primary navigation" data-home-nav>
                     <div class="aw-home-nav-links">
-                        <a href="#features">Features</a>
-                        <a href="#how-it-works">How It Works</a>
+                        <a asp-controller="Home" asp-action="JobTracker" aria-current="@(action == "JobTracker" ? "page" : null)">Job tracker</a>
+                        <a asp-controller="Home" asp-action="ResumeMatch" aria-current="@(action == "ResumeMatch" ? "page" : null)">Resume match</a>
+                        <a asp-controller="Home" asp-action="ResumeBuilder" aria-current="@(action == "ResumeBuilder" ? "page" : null)">Resume builder</a>
+                        <a asp-controller="Home" asp-action="HowItWorks" aria-current="@(action == "HowItWorks" ? "page" : null)">How it works</a>
+                        <a asp-controller="Contact" asp-action="Index" aria-current="@(controller == "Contact" ? "page" : null)">Contact us</a>
                     </div>
                     <div class="aw-home-nav-actions">
-                        <a class="aw-home-sign-in" asp-area="Identity" asp-page="/Account/Login">Sign In</a>
-                        <a class="btn btn-primary" asp-area="Identity" asp-page="/Account/Register">Start Tracking</a>
+                        @if (isAuthenticated)
+                        {
+                            <a class="aw-home-sign-in" asp-controller="Dashboard" asp-action="Index">Dashboard</a>
+                            <a class="btn aw-home-nav-cta" asp-controller="JobApplications" asp-action="Create">Add application</a>
+                        }
+                        else
+                        {
+                            <a class="aw-home-sign-in" asp-area="Identity" asp-page="/Account/Login">Sign in</a>
+                            <a class="btn aw-home-nav-cta" asp-area="Identity" asp-page="/Account/Register">Start tracking</a>
+                        }
                     </div>
                 </nav>
             </div>
@@ -140,13 +177,14 @@ else
         </header>
         <main id="main-content" role="main">@RenderBody()</main>
     }
-    @if (!isMarketingHome)
+    @if (!isMarketingPage)
     {
         <footer class="public-footer">
             <nav aria-label="Legal and support">
                 <a asp-controller="Home" asp-action="Privacy">Privacy</a>
                 <a asp-controller="Home" asp-action="Terms">Terms</a>
                 <a asp-controller="Home" asp-action="Support">Support</a>
+                <a asp-controller="Contact" asp-action="Index">Contact us</a>
             </nav>
             <span>&copy; @DateTime.UtcNow.Year ApplyWise</span>
         </footer>

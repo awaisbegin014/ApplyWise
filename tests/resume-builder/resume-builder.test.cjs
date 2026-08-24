@@ -8,7 +8,7 @@ const path = require('node:path');
 const builder = require(path.resolve(__dirname, '../../src/ApplyWise.Web/wwwroot/js/resume-builder.js'));
 const NEW_TEMPLATE_IDS = Object.freeze([
     'evergreen-professional', 'monochrome-timeline', 'mint-horizon',
-    'amber-academic', 'graphite-impact', 'midnight-executive'
+    'amber-academic', 'classic-latex', 'graphite-impact', 'midnight-executive'
 ]);
 const TEMPLATE_IDS = Object.freeze([
     'classic', 'emerald', 'modern', 'executive', 'compact', 'minimal', 'corporate', 'timeline', 'studio',
@@ -64,7 +64,7 @@ function images(value) {
 
 test('empty state implements the complete versioned server contract', () => {
     const state = builder.createEmptyState();
-    assert.equal(builder.SCHEMA_VERSION, 4);
+    assert.equal(builder.SCHEMA_VERSION, 5);
     assert.equal(state.schemaVersion, builder.SCHEMA_VERSION);
     assert.equal(state.templateSelectionConfirmed, false);
     assert.deepEqual(Object.keys(state.personalInformation), [
@@ -80,7 +80,7 @@ test('empty state implements the complete versioned server contract', () => {
     assert.ok(state.sections.every((section) => typeof section.title === 'string' && typeof section.isVisible === 'boolean'));
 });
 
-test('schema v4 migrates v3 skill strings and language data without inventing ratings', () => {
+test('schema v5 migrates v3 skill strings and language data without inventing ratings', () => {
     const parsed = builder.parseDraft(JSON.stringify({
         schemaVersion: 3,
         templateId: 'modern',
@@ -89,7 +89,7 @@ test('schema v4 migrates v3 skill strings and language data without inventing ra
     }));
 
     assert.equal(parsed.recovered, false);
-    assert.equal(parsed.state.schemaVersion, 4);
+    assert.equal(parsed.state.schemaVersion, 5);
     assert.equal(parsed.state.templateSelectionConfirmed, true);
     assert.deepEqual(parsed.state.skills[0].skills, [
         { id: 'skill-1-1', name: 'React', level: null },
@@ -106,7 +106,7 @@ test('normalization keeps exact nested field names and drops unknown data', () =
         schemaVersion: 999,
         personalInformation: { fullName: '  Ada Lovelace  ', emailAddress: 'ada@example.com', profilePhotoDataUrl: PROFILE_PHOTO_DATA_URL, extra: 'drop' },
         education: [{ Id: 'wrong-case', institutionName: 'Analytical Academy', descriptionOrCoursework: 'Math', isCurrentlyStudying: true, evil: 'drop' }],
-        experience: [{ companyName: 'Engine Works', bulletPoints: ['Designed systems'], isCurrentlyWorking: true }],
+        experience: [{ companyName: 'Engine Works', technologySkills: 'C++, Mathematics', bulletPoints: ['Designed systems'], isCurrentlyWorking: true }],
         projects: [{ projectName: 'Engine', technologiesUsed: ['Math', 'math', 'Logic'], repositoryUrl: 'https://example.com/repo', isOngoing: true }],
         achievementsAndCertifications: [{ title: 'Fellow', issuingOrganization: 'Society' }],
         volunteerExperience: [{ organizationName: 'Community', isCurrentlyVolunteering: true }],
@@ -120,6 +120,7 @@ test('normalization keeps exact nested field names and drops unknown data', () =
     assert.equal(normalized.education[0].descriptionOrCoursework, 'Math');
     assert.equal(normalized.education[0].isCurrentlyStudying, true);
     assert.equal(normalized.experience[0].isCurrentlyWorking, true);
+    assert.equal(normalized.experience[0].technologySkills, 'C++, Mathematics');
     assert.deepEqual(normalized.projects[0].technologiesUsed, ['Math', 'Logic']);
     assert.equal(normalized.achievementsAndCertifications[0].issuingOrganization, 'Society');
     assert.equal(normalized.volunteerExperience[0].organizationName, 'Community');
@@ -371,7 +372,7 @@ test('one-page guidance tracks the recommended content limits', () => {
     assert.ok(overGuide.exceeded.includes('professionalSummary'));
 });
 
-test('template catalog exposes fifteen professional immutable choices in deterministic gallery order', () => {
+test('template catalog exposes sixteen professional immutable choices in deterministic gallery order', () => {
     assert.equal(builder.DEFAULT_TEMPLATE_ID, 'classic');
     assert.equal(Object.isFrozen(builder.TEMPLATE_CATALOG), true);
     assert.deepEqual(builder.TEMPLATE_CATALOG.map((template) => template.id), TEMPLATE_IDS);
@@ -387,10 +388,10 @@ test('template catalog exposes fifteen professional immutable choices in determi
     assert.equal(new Set(builder.TEMPLATE_CATALOG.map((template) => template.layout)).size, TEMPLATE_IDS.length);
     assert.deepEqual(builder.TEMPLATE_CATALOG.filter((template) => template.hasPhoto).map((template) => template.id), PHOTO_TEMPLATE_IDS);
     const newTemplates = builder.TEMPLATE_CATALOG.filter((template) => NEW_TEMPLATE_IDS.includes(template.id));
-    assert.equal(newTemplates.length, 6);
+    assert.equal(newTemplates.length, 7);
     assert.ok(newTemplates.every((template) => template.locked === true));
     assert.deepEqual(newTemplates.map((template) => template.classification), [
-        'Balanced', 'ATS-optimized', 'Balanced', 'ATS-optimized', 'Visual', 'Visual'
+        'Balanced', 'ATS-optimized', 'Balanced', 'ATS-optimized', 'ATS-optimized', 'Visual', 'Visual'
     ]);
     assert.deepEqual(newTemplates.filter((template) => template.photoRequired).map((template) => template.id), [
         'evergreen-professional', 'monochrome-timeline', 'mint-horizon', 'graphite-impact', 'midnight-executive'
@@ -495,7 +496,7 @@ test('builder view offers a gallery-first picker, eight editor tabs, and conditi
     assert.match(view, /data-one-page-guide/);
 });
 
-test('templates produce distinct A4 selectable-text document definitions', () => {
+test('templates produce distinct selectable-text document definitions at their intended page size', () => {
     const definitions = builder.TEMPLATE_CATALOG.map((template) => {
         const state = builder.createSampleState();
         state.templateId = template.id;
@@ -503,7 +504,7 @@ test('templates produce distinct A4 selectable-text document definitions', () =>
         const documentDefinition = builder.buildDocumentDefinition(state);
 
         assert.equal(JSON.stringify(state), before, `${template.id} rendering does not mutate the draft`);
-        assert.equal(documentDefinition.pageSize, 'A4');
+        assert.equal(documentDefinition.pageSize, template.id === 'classic-latex' ? 'LETTER' : 'A4');
         assert.equal(documentDefinition.defaultStyle.font, template.id === 'midnight-executive' ? 'Poppins' : template.font);
         assert.ok(Array.isArray(documentDefinition.content));
         assert.equal(Boolean(documentDefinition.footer), template.id === 'midnight-executive');
@@ -519,6 +520,16 @@ test('templates produce distinct A4 selectable-text document definitions', () =>
 
     assert.equal(new Set(definitions.map((definition) => JSON.stringify(definition))).size, TEMPLATE_IDS.length);
     assert.ok(new Set(definitions.map((definition) => definition.defaultStyle.font)).size >= 2);
+
+    const classicLatexState = builder.createSampleState();
+    classicLatexState.templateId = 'classic-latex';
+    const classicLatex = builder.buildDocumentDefinition(classicLatexState);
+    const classicLatexText = allText(classicLatex);
+    assert.equal(classicLatex.defaultStyle.font, 'CMU Serif');
+    assert.deepEqual(classicLatex.pageMargins, [32.4, 14.5, 32.4, 22]);
+    assert.match(classicLatexText, /TECHNICAL SKILLS/i);
+    assert.match(classicLatexText, /HONORS AND AWARDS/i);
+    assert.match(classicLatexText, /Technology\/Skills:/);
 
     const classicState = builder.createSampleState();
     classicState.templateId = 'classic';
@@ -741,6 +752,7 @@ test('vendored pdfmake creates one-page text and portrait PDFs for every templat
     require(path.resolve(__dirname, '../../src/ApplyWise.Web/wwwroot/lib/pdfmake/vfs_fonts.js'));
     require(path.resolve(__dirname, '../../src/ApplyWise.Web/wwwroot/lib/pdfmake/poppins_vfs.js'));
     require(path.resolve(__dirname, '../../src/ApplyWise.Web/wwwroot/lib/pdfmake/libre_baskerville_vfs.js'));
+    require(path.resolve(__dirname, '../../src/ApplyWise.Web/wwwroot/lib/pdfmake/cmu_serif_vfs.js'));
 
     for (const templateId of TEMPLATE_IDS) {
         const sample = builder.createSampleState();

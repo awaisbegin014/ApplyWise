@@ -51,18 +51,19 @@
         <form method="post" asp-action="Save" class="aw-profile-form">
             <div asp-validation-summary="ModelOnly" class="validation-summary" role="alert"></div>
             <div class="form-grid">
+                <p class="form-grid-wide"><strong>Optional fields:</strong> Gender and date of birth can be left blank and do not affect job matches.</p>
                 <div><label asp-for="FullName" class="form-label"></label><input asp-for="FullName" class="form-control" /></div>
                 <div>
                     <label asp-for="Gender" class="form-label"></label>
                     <select asp-for="Gender" class="form-select">
-                        <option value="">Choose gender</option>
+                        <option value="">Leave blank</option>
                         <option value="Woman">Woman</option>
                         <option value="Man">Man</option>
                         <option value="NonBinary">Non-binary</option>
                         <option value="PreferNotToSay">Prefer not to say</option>
                     </select>
                 </div>
-                <div><label asp-for="DateOfBirth" class="form-label"></label><input asp-for="DateOfBirth" type="date" max="@DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd")" class="form-control" /></div>
+                <div><label asp-for="DateOfBirth" class="form-label"></label><input asp-for="DateOfBirth" type="date" autocomplete="bday" max="@DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd")" class="form-control" /></div>
                 <div><label asp-for="CareerStage" class="form-label"></label><select asp-for="CareerStage" asp-items="Html.GetEnumSelectList<CareerStage>()" class="form-select"><option value="">Choose one</option></select></div>
                 <div><label asp-for="Institution" class="form-label"></label><input asp-for="Institution" class="form-control" /></div>
                 <div><label asp-for="DegreeProgram" class="form-label"></label><input asp-for="DegreeProgram" class="form-control" /></div>

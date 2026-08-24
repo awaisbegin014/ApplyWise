@@ -2,8 +2,8 @@ using ApplyWise.Web.Data;
 using ApplyWise.Web.Models;
 using ApplyWise.Web.Services.ResumeAnalysis;
 using ApplyWise.Web.Services.ResumeStorage;
+using ApplyWise.Web.Services.Security;
 using System.Text.Json;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 
 namespace ApplyWise.Web.Services.BestResumePicker;
@@ -13,12 +13,17 @@ public sealed class BestResumePickerService(
     IResumeStorageService resumeStorage,
     IResumeTextExtractorService textExtractor,
     IResumeAnalysisStore analysisStore,
+    IWorkspaceQuotaService quotas,
+    IWorkspaceQuotaGate quotaGate,
     ILogger<BestResumePickerService> logger) : IBestResumePickerService
 {
     public const int MaxResumesPerComparison = 8;
     private static readonly SemaphoreSlim ComparisonSlots = new(initialCount: 2, maxCount: 2);
     private static readonly TimeSpan AdmissionTimeout = TimeSpan.FromSeconds(2);
-    private sealed record CompletedComparison(Resume Resume, ResumeAnalysisResult Result);
+    private sealed record CompletedComparison(
+        Resume Resume,
+        ResumeAnalysisResult Result,
+        StoredResumeAnalysis Stored);
 
     public async Task<BestResumePickerResult> CompareResumesForJobAsync(
         string userId,
@@ -172,17 +177,13 @@ public sealed class BestResumePickerService(
                 jobApplicationId,
                 analysisType,
                 cancellationToken);
-            completed.Add(new CompletedComparison(resume, stored.Result));
+            completed.Add(new CompletedComparison(resume, stored.Result, stored));
         }
 
-        try
+        if (!await SaveCompletedAnalysesAsync(userId, completed, cancellationToken))
         {
-            await dbContext.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateException exception) when (IsUniqueConstraintViolation(exception))
-        {
-            logger.LogInformation("A concurrent Best Resume Picker request populated one or more identical analysis cache entries.");
-            dbContext.ChangeTracker.Clear();
+            throw new InvalidOperationException(
+                "Your workspace reached its saved-analysis limit. Delete old analyses before comparing resumes again.");
         }
 
         var ranked = completed
@@ -231,6 +232,66 @@ public sealed class BestResumePickerService(
             comparedResults);
     }
 
+    private async Task<bool> SaveCompletedAnalysesAsync(
+        string userId,
+        IReadOnlyList<CompletedComparison> completed,
+        CancellationToken cancellationToken) =>
+        await quotaGate.RunAsync(
+            WorkspaceQuotaResources.ResumeAnalyses,
+            userId,
+            async lockCancellationToken =>
+            {
+                foreach (var item in completed.Where(item => !item.Stored.IsCacheHit))
+                {
+                    var analysis = item.Stored.Analysis;
+                    if (dbContext.Entry(analysis).State != EntityState.Added
+                        || string.IsNullOrWhiteSpace(analysis.InputHash))
+                    {
+                        continue;
+                    }
+
+                    var exists = await dbContext.ResumeAnalyses
+                        .AsNoTracking()
+                        .AnyAsync(candidate =>
+                            candidate.UserId == analysis.UserId
+                            && candidate.ResumeId == analysis.ResumeId
+                            && candidate.JobApplicationId == analysis.JobApplicationId
+                            && candidate.AnalysisType == analysis.AnalysisType
+                            && candidate.InputHash == analysis.InputHash
+                            && candidate.ScoreVersion == analysis.ScoreVersion,
+                            lockCancellationToken);
+                    if (exists)
+                    {
+                        dbContext.Entry(analysis).State = EntityState.Detached;
+                    }
+                }
+
+                var pending = completed
+                    .Select(item => item.Stored.Analysis)
+                    .Where(analysis => dbContext.Entry(analysis).State == EntityState.Added)
+                    .Distinct()
+                    .ToArray();
+                var incomingBytes = pending.Aggregate(
+                    0L,
+                    (total, analysis) => checked(total + analysis.SnapshotSizeBytes));
+                var withinQuota = await quotas.CanCreateAnalysesAsync(
+                    userId,
+                    pending.Length,
+                    incomingBytes,
+                    lockCancellationToken);
+                if (!withinQuota)
+                {
+                    foreach (var analysis in pending)
+                    {
+                        dbContext.Entry(analysis).State = EntityState.Detached;
+                    }
+                }
+
+                await dbContext.SaveChangesAsync(lockCancellationToken);
+                return withinQuota;
+            },
+            cancellationToken);
+
     private static string BuildReason(CompletedComparison winner, int readableCount, int topScoreCount)
     {
         var coverage = $"Its ApplyWise Fit estimate is {winner.Result.OverallScore}%, with {winner.Result.MustHaveCoverage:P0} must-have coverage, {winner.Result.RequiredCoverage:P0} required coverage, {winner.Result.EvidenceQuality:P0} evidence quality, and {winner.Result.AtsReadinessScore}% readiness";
@@ -238,9 +299,6 @@ public sealed class BestResumePickerService(
             ? $"{coverage}. It tied for the highest fit estimate; requirement coverage, evidence, readiness, then your default/recency settings resolved the tie among {readableCount} readable resumes."
             : $"{coverage}, the strongest ranked result among {readableCount} readable resume{(readableCount == 1 ? string.Empty : "s")}.";
     }
-
-    private static bool IsUniqueConstraintViolation(DbUpdateException exception) =>
-        exception.InnerException is SqlException { Number: 2601 or 2627 };
 
     private static string ExtractionMessage(string status) => status switch
     {

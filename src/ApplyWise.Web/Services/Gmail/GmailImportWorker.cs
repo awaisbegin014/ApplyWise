@@ -9,7 +9,7 @@ public sealed class GmailImportWorker(
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (!options.Value.IsConfigured || !options.Value.GmailAutoSyncEnabled)
+        if (!options.Value.IsGmailImportConfigured || !options.Value.GmailAutoSyncEnabled)
         {
             logger.LogInformation("Automatic Gmail import is disabled or Google OAuth is not configured.");
             return;

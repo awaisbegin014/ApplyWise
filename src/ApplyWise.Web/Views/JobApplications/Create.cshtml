@@ -1,9 +1,9 @@
 @model ApplyWise.Web.ViewModels.JobApplications.JobApplicationCreateViewModel
 @{ ViewData["Title"] = "Add Application"; }
 
-<div class="page-heading"><div><h1>Add Application</h1><p>Every new application starts as Applied. Update its status as the process moves forward.</p></div></div>
+<div class="page-heading"><div><h1>Add application</h1><p>Every new application starts as Applied. Update its status as the process moves forward.</p></div></div>
 <form asp-action="Create" method="post" class="application-form">
     <partial name="_ApplicationForm" model="Model" />
-    <div class="form-actions"><button class="btn btn-primary" type="submit">Save Application</button><a class="btn btn-outline-secondary" asp-action="Index">Cancel</a></div>
+    <div class="form-actions"><button class="btn btn-primary" type="submit">Save application</button><a class="btn btn-outline-secondary" asp-action="Index">Cancel</a></div>
 </form>
 @section Scripts { <partial name="_ValidationScriptsPartial" /> }

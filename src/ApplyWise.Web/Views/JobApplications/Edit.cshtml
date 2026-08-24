@@ -1,10 +1,10 @@
 @model ApplyWise.Web.ViewModels.JobApplications.JobApplicationEditViewModel
 @{ ViewData["Title"] = "Edit Application"; }
 
-<div class="page-heading"><div><h1>Edit Application</h1><p>Update the essentials or add custom details for this role.</p></div></div>
+<div class="page-heading"><div><h1>Edit application</h1><p>Update the essentials or add custom details for this role.</p></div></div>
 <form asp-action="Edit" asp-route-id="@Model.Id" method="post" class="application-form">
     <input asp-for="Id" type="hidden" />
     <partial name="_ApplicationForm" model="Model" />
-    <div class="form-actions"><button class="btn btn-primary" type="submit">Save Changes</button><a class="btn btn-outline-secondary" asp-action="Details" asp-route-id="@Model.Id">Cancel</a></div>
+    <div class="form-actions"><button class="btn btn-primary" type="submit">Save changes</button><a class="btn btn-outline-secondary" asp-action="Details" asp-route-id="@Model.Id">Cancel</a></div>
 </form>
 @section Scripts { <partial name="_ValidationScriptsPartial" /> }

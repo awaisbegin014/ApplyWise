@@ -16,7 +16,7 @@
 <div class="account-links">
 @if (SignInManager.IsSignedIn(User)) {
     <div class="account-menu" data-account-menu>
-        <button class="account-menu-trigger" type="button" data-account-menu-trigger aria-expanded="false" aria-haspopup="menu" aria-controls="account-menu-panel" title="Open account menu">
+        <button class="account-menu-trigger" type="button" data-account-menu-trigger aria-expanded="false" aria-controls="account-menu-panel" title="Open account options">
             <span class="account-avatar">
                 <span class="account-avatar-fallback" aria-hidden="true">@displayName[0].ToString().ToUpperInvariant()</span>
                 @if (!isAdmin)
@@ -24,9 +24,9 @@
                     <img src="@(Url.Action("Avatar", "Profile", new { version = DateTimeOffset.UtcNow.ToUnixTimeSeconds() }) ?? "/profile/avatar")" alt="Your profile picture" onerror="this.hidden=true;" />
                 }
             </span>
-            <span class="visually-hidden">Open account menu</span>
+            <span class="visually-hidden">Open account options</span>
         </button>
-        <div class="account-menu-panel" id="account-menu-panel" data-account-menu-panel role="menu" aria-label="Account menu" hidden>
+        <div class="account-menu-panel" id="account-menu-panel" data-account-menu-panel aria-label="Account options" hidden>
             <div class="account-menu-summary">
                 <span class="account-avatar account-avatar-large">
                     <span class="account-avatar-fallback" aria-hidden="true">@displayName[0].ToString().ToUpperInvariant()</span>
@@ -40,17 +40,17 @@
             <div class="account-menu-links">
                 @if (isAdmin)
                 {
-                    <a asp-controller="Admin" asp-action="Index" role="menuitem">Owner console</a>
-                    <a asp-controller="Dashboard" asp-action="Settings" role="menuitem">Owner security</a>
+                    <a asp-controller="Admin" asp-action="Index">Owner console</a>
+                    <a asp-controller="Dashboard" asp-action="Settings">Owner security</a>
                 }
                 else
                 {
-                    <a asp-controller="Profile" asp-action="Index" role="menuitem">My profile</a>
-                    <a asp-controller="Dashboard" asp-action="Settings" role="menuitem">Settings</a>
+                    <a asp-controller="Profile" asp-action="Index">My profile</a>
+                    <a asp-controller="Dashboard" asp-action="Settings">Settings</a>
                 }
             </div>
             <form asp-area="Identity" asp-page="/Account/Logout" asp-route-returnUrl="@Url.Action("Index", "Home", new { area = "" })">
-                <button type="submit" role="menuitem">Log out</button>
+                <button type="submit">Log out</button>
             </form>
         </div>
     </div>

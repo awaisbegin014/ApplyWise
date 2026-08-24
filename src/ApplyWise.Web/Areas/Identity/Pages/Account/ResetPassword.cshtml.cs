@@ -15,6 +15,7 @@ public class ResetPasswordModel(
     UserManager<IdentityUser> userManager,
     IAccountSecurityCodeService securityCodes,
     IAccountSecurityRequestQueue securityRequests,
+    ILoginTimingProtector timingProtector,
     ILogger<ResetPasswordModel> logger) : PageModel
 {
     [BindProperty]
@@ -64,6 +65,21 @@ public class ResetPasswordModel(
     }
 
     public async Task<IActionResult> OnPostAsync()
+    {
+        var startedAt = System.Diagnostics.Stopwatch.GetTimestamp();
+        try
+        {
+            return await ResetPasswordAsync();
+        }
+        finally
+        {
+            await timingProtector.EnforceMinimumResponseTimeAsync(
+                startedAt,
+                HttpContext.RequestAborted);
+        }
+    }
+
+    private async Task<IActionResult> ResetPasswordAsync()
     {
         Input.Email = Input.Email.Trim();
         if (!IsLegacyLink && string.IsNullOrWhiteSpace(Input.Code))
@@ -124,7 +140,17 @@ public class ResetPasswordModel(
             return Page();
         }
 
-        securityRequests.TryQueue(Input.Email, AccountSecurityAction.ResetPassword);
+        if (!securityRequests.TryQueue(
+                Input.Email,
+                AccountSecurityAction.ResetPassword))
+        {
+            Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+            Response.Headers.RetryAfter = "30";
+            ModelState.AddModelError(
+                string.Empty,
+                "Email delivery is busy. Wait 30 seconds and try again.");
+            return Page();
+        }
         DeliveryMessage = "If an account exists for this address, a new six-digit reset code will arrive shortly.";
         return Page();
     }

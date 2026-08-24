@@ -5,7 +5,7 @@
 }
 
 <div class="aw-page aw-fade-in">
-    <section class="aw-applications-hero"><div><span class="aw-kicker"><svg class="ui-icon"><use href="#i-briefcase" /></svg>Your application workspace</span><h1>Every role. One clear next move.</h1><p>Track status, resume choice, deadlines, and follow-ups without losing the story behind each application.</p></div><div class="aw-workspace-summary"><span><strong>@Model.Applications.Count</strong><small>shown</small></span><span><strong>@activeCount</strong><small>active</small></span><a class="btn btn-primary" asp-action="Create"><svg class="ui-icon"><use href="#i-plus" /></svg>Add Application</a></div></section>
+    <section class="aw-applications-hero"><div><span class="aw-kicker"><svg class="ui-icon"><use href="#i-briefcase" /></svg>Your application workspace</span><h1>Every role. One clear next move.</h1><p>Track status, resume choice, deadlines, and follow-ups without losing the story behind each application.</p></div><div class="aw-workspace-summary"><span><strong>@Model.Applications.Count</strong><small>shown</small></span><span><strong>@activeCount</strong><small>active</small></span><a class="btn btn-primary" asp-action="Create"><svg class="ui-icon"><use href="#i-plus" /></svg>Add application</a></div></section>
 
     @if (TempData["SuccessMessage"] is string successMessage) { <div class="alert app-alert aw-success-toast" role="status"><span>✓</span>@successMessage</div> }
 
@@ -15,12 +15,12 @@
         <label><span>Status</span><select asp-for="StatusFilter" asp-items="Html.GetEnumSelectList<ApplicationStatus>()" class="form-select"><option value="">All statuses</option></select></label>
         <label><span>Source</span><select asp-for="SourceFilter" asp-items="Html.GetEnumSelectList<JobSource>()" class="form-select"><option value="">All sources</option></select></label>
         <label><span>Sort</span><select asp-for="SortBy" class="form-select"><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="deadline">Deadline</option><option value="status">Status</option></select></label>
-        <div class="aw-filter-actions"><button class="btn btn-primary" type="submit">Apply Filters</button><a class="btn btn-link" asp-action="Index">Clear</a></div>
+        <div class="aw-filter-actions"><button class="btn btn-primary" type="submit">Apply filters</button><a class="btn btn-link" asp-action="Index">Clear</a></div>
     </form>
 
     @if (Model.Applications.Count == 0)
     {
-        <section class="aw-panel aw-empty-state"><span class="empty-icon" aria-hidden="true"><svg class="ui-icon"><use href="#i-briefcase" /></svg></span><span class="aw-kicker">A fresh workspace</span><h2>@(HasFilters() ? "No matching applications" : "No applications yet")</h2><p>@(HasFilters() ? "Try clearing a filter to bring more roles back into view." : "Add an application and ApplyWise will track its resume, status, and next action.")</p>@if (HasFilters()) { <a class="btn btn-secondary-soft" asp-action="Index">Clear Filters</a> } else { <a class="btn btn-primary" asp-action="Create"><svg class="ui-icon"><use href="#i-plus" /></svg>Add Application</a> }</section>
+        <section class="aw-panel aw-empty-state"><span class="empty-icon" aria-hidden="true"><svg class="ui-icon"><use href="#i-briefcase" /></svg></span><span class="aw-kicker">A fresh workspace</span><h2>@(HasFilters() ? "No matching applications" : "No applications yet")</h2><p>@(HasFilters() ? "Try clearing a filter to bring more roles back into view." : "Add an application and ApplyWise will track its resume, status, and next action.")</p>@if (HasFilters()) { <a class="btn btn-secondary-soft" asp-action="Index">Clear filters</a> } else { <a class="btn btn-primary" asp-action="Create"><svg class="ui-icon"><use href="#i-plus" /></svg>Add application</a> }</section>
     }
     else
     {
@@ -32,7 +32,7 @@
                     <div class="aw-application-card-head"><span class="aw-company-avatar">@Initial(application.CompanyName)</span><div><h3>@application.JobTitle</h3><p>@application.CompanyName</p></div><span class="aw-status @StatusClass(application.Status)">@application.Status.GetDisplayName()</span></div>
                     <div class="aw-application-meta"><span><small>Source</small><strong>@application.Source.GetDisplayName()</strong></span><span><small>Resume</small><strong>@(application.ResumeVersionName ?? "Choose one")</strong></span><span><small>Deadline</small><strong class="@(IsDeadlineSoon(application.Deadline) ? "warning-text" : null)">@FormatDate(application.Deadline)</strong></span></div>
                     <div class="aw-next-action"><span class="aw-action-mark"><svg class="ui-icon"><use href="#i-arrow" /></svg></span><div><small>Suggested next action</small><strong>@NextAction(application.Status, application.Deadline)</strong></div></div>
-                    <div class="aw-card-actions"><a class="btn btn-primary btn-sm" asp-action="Details" asp-route-id="@application.Id">Open Workspace</a><a class="btn btn-secondary-soft btn-sm" asp-action="Edit" asp-route-id="@application.Id">Edit</a><a class="aw-icon-link" asp-action="Delete" asp-route-id="@application.Id" aria-label="Delete @application.JobTitle application">Delete</a></div>
+                    <div class="aw-card-actions"><a class="btn btn-primary btn-sm" asp-action="Details" asp-route-id="@application.Id">Open workspace</a><a class="btn btn-secondary-soft btn-sm" asp-action="Edit" asp-route-id="@application.Id">Edit</a><a class="aw-icon-link" asp-action="Delete" asp-route-id="@application.Id" aria-label="Delete @application.JobTitle application">Delete</a></div>
                 </article>
             }
         </section>

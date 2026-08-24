@@ -24,7 +24,7 @@
 }(typeof globalThis !== 'undefined' ? globalThis : this, function (templateRenderers) {
     'use strict';
 
-    const SCHEMA_VERSION = 4;
+    const SCHEMA_VERSION = 5;
     const LIMITS = Object.freeze({
         draftBytes: 512000,
         photoDataUrl: 320000,
@@ -282,6 +282,7 @@
             companyName: text(source.companyName, LIMITS.shortText),
             jobTitle: text(source.jobTitle, LIMITS.shortText),
             employmentType: text(source.employmentType, LIMITS.shortText),
+            technologySkills: text(source.technologySkills, LIMITS.longText),
             location: text(source.location, LIMITS.shortText),
             startDate: text(source.startDate, 7),
             endDate: text(source.endDate, 7),
@@ -1386,7 +1387,8 @@
                 twoCellResumeRight: twoCellResumeRight,
                 sectionHeading: sectionHeading,
                 pdfText: pdfText,
-                pdfRichText: pdfRichText
+                pdfRichText: pdfRichText,
+                safeUrl: parseHttpUrl
             });
             if (lockedDefinition) return lockedDefinition;
         }
@@ -1435,9 +1437,9 @@
                 { id: 'education-harbor', institutionName: 'Harbor College', degree: 'Intermediate', fieldOfStudy: 'Pre-Engineering', startDate: '2020-08', endDate: '2022-06', location: 'Seattle, WA', grade: '90%', descriptionOrCoursework: 'Mathematics, Physics, and Chemistry' }
             ],
             experience: [
-                { id: 'experience-codesprint', companyName: 'CodeSprint - Northbridge University', jobTitle: 'Co-Head', employmentType: 'Leadership', location: 'Seattle, WA', startDate: '2025-03', endDate: '2026-01', bulletPoints: ['Co-led a full-stack competition platform supporting registration, problem access, and [b]real-time results[/b].'] },
-                { id: 'experience-workshops', companyName: 'Open Source Society', jobTitle: 'Workshop Lead', employmentType: 'Volunteer', location: 'Seattle, WA', startDate: '2024-08', isCurrentlyWorking: true, bulletPoints: ['Lead practical Git and GitHub workshops for student development teams.'] },
-                { id: 'experience-intern', companyName: 'Example Labs', jobTitle: 'Software Engineering Intern', employmentType: 'Internship', location: 'Remote', startDate: '2024-06', endDate: '2024-08', bulletPoints: ['Shipped tested API and dashboard improvements that reduced manual reporting work.'] }
+                { id: 'experience-codesprint', companyName: 'CodeSprint - Northbridge University', jobTitle: 'Co-Head', employmentType: 'Leadership', technologySkills: 'Full-Stack Development, Contest Management, Team Coordination', location: 'Seattle, WA', startDate: '2025-03', endDate: '2026-01', bulletPoints: ['Co-led a full-stack competition platform supporting registration, problem access, and [b]real-time results[/b].'] },
+                { id: 'experience-workshops', companyName: 'Open Source Society', jobTitle: 'Workshop Lead', employmentType: 'Volunteer', technologySkills: 'Git, GitHub, Public Speaking, Team Leadership', location: 'Seattle, WA', startDate: '2024-08', isCurrentlyWorking: true, bulletPoints: ['Lead practical Git and GitHub workshops for student development teams.'] },
+                { id: 'experience-intern', companyName: 'Example Labs', jobTitle: 'Software Engineering Intern', employmentType: 'Internship', technologySkills: '.NET, PostgreSQL, Automated Testing', location: 'Remote', startDate: '2024-06', endDate: '2024-08', bulletPoints: ['Shipped tested API and dashboard improvements that reduced manual reporting work.'] }
             ],
             projects: [
                 { id: 'project-campus-collab', projectName: 'Campus Collaboration Hub', projectUrl: 'https://example.com/campus-hub', repositoryUrl: 'https://example.com/campus-hub-source', technologiesUsed: ['Next.js', 'Python', 'PostgreSQL'], startDate: '2025-01', isOngoing: true, bulletPoints: ['Connected university projects with skill-matched contributors across batches.'] },
@@ -1550,6 +1552,7 @@
         company: LIMITS.shortText,
         jobTitle: LIMITS.shortText,
         employmentType: LIMITS.shortText,
+        technologySkills: LIMITS.longText,
         projectName: LIMITS.shortText,
         projectUrl: LIMITS.url,
         repositoryUrl: LIMITS.url,
@@ -1569,7 +1572,7 @@
 
     const ENTRY_FACTORIES = Object.freeze({
         education: function () { return { id: newId('education'), institutionName: '', degree: '', fieldOfStudy: '', startDate: '', endDate: '', isCurrentlyStudying: false, location: '', grade: '', descriptionOrCoursework: '' }; },
-        experience: function () { return { id: newId('experience'), companyName: '', jobTitle: '', employmentType: '', location: '', startDate: '', endDate: '', isCurrentlyWorking: false, bulletPoints: [''] }; },
+        experience: function () { return { id: newId('experience'), companyName: '', jobTitle: '', employmentType: '', technologySkills: '', location: '', startDate: '', endDate: '', isCurrentlyWorking: false, bulletPoints: [''] }; },
         projects: function () { return { id: newId('project'), projectName: '', projectUrl: '', repositoryUrl: '', technologiesUsed: [], startDate: '', endDate: '', isOngoing: false, bulletPoints: [''] }; },
         skills: function () { return { id: newId('skills'), name: '', skills: [] }; },
         achievementsAndCertifications: function () { return { id: newId('achievement'), title: '', issuingOrganization: '', date: '', credentialUrl: '', description: '' }; },
@@ -1647,6 +1650,8 @@
         let galleryPhotoDataUrl = '';
         let galleryPhotoPromise = null;
         let templatePreviewOpener = null;
+        let expandedPreviewOpener = null;
+        const previewInertRecords = [];
         const galleryBlobs = new Map();
         const galleryUrls = new Map();
         const galleryPromises = new Map();
@@ -2549,7 +2554,8 @@
                 help: 'Lead with outcomes and quantify impact where you can.', entryTitle: function (entry, index) { return entry.jobTitle || entry.companyName || 'Experience ' + String(index + 1); },
                 fields: [
                     { property: 'companyName', label: 'Company name' }, { property: 'jobTitle', label: 'Job title' },
-                    { property: 'employmentType', label: 'Employment type', placeholder: 'Full-time, internship, contract…' }, { property: 'location', label: 'Location' },
+                    { property: 'employmentType', label: 'Employment type', placeholder: 'Full-time, internship, contract…' }, { property: 'location', label: 'Location or organization' },
+                    { property: 'technologySkills', label: 'Technology / skills', placeholder: 'React.js, PostgreSQL, Leadership…', wide: true },
                     { property: 'startDate', label: 'Start month', type: 'month' }, { property: 'endDate', label: 'End month', type: 'month', when: function (entry) { return !entry.isCurrentlyWorking; } },
                     { property: 'isCurrentlyWorking', label: 'Currently working', type: 'checkbox' }
                 ],
@@ -2842,6 +2848,9 @@
                     'libre-baskerville',
                     root.dataset.libreBaskervilleFontUrl));
             }
+            if (font.includes('cmu')) {
+                loads.push(loadFontScript('cmu-serif', root.dataset.cmuSerifFontUrl));
+            }
             return Promise.all(loads);
         }
 
@@ -2942,7 +2951,50 @@
             previewTimer = windowObject.setTimeout(refreshPreview, typeof delay === 'number' ? delay : 650);
         }
 
+        const renderFocusDataKeys = [
+            'action', 'field', 'bindPath', 'section', 'index', 'listPath',
+            'categoryIndex', 'skillIndex', 'sectionIndex', 'entryIndex', 'editorTab'
+        ];
+
+        function captureRenderFocus() {
+            const active = documentObject.activeElement;
+            if (!active || !root.contains(active)) return null;
+            const data = {};
+            renderFocusDataKeys.forEach(function (key) {
+                if (active.dataset && active.dataset[key] !== undefined) data[key] = active.dataset[key];
+            });
+            return { id: active.id || '', data: data };
+        }
+
+        function restoreRenderFocus(snapshot) {
+            if (!snapshot) return;
+            let target = snapshot.id ? documentObject.getElementById(snapshot.id) : null;
+            const focusable = Array.from(root.querySelectorAll(
+                'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'));
+            const keys = Object.keys(snapshot.data);
+            if (!target || !root.contains(target)) {
+                target = focusable.find(function (candidate) {
+                    return keys.length > 0 && keys.every(function (key) {
+                        return candidate.dataset && candidate.dataset[key] === snapshot.data[key];
+                    });
+                });
+            }
+            if (!target) {
+                const positionalKeys = new Set(['index', 'skillIndex', 'entryIndex']);
+                const stableKeys = keys.filter(function (key) { return !positionalKeys.has(key); });
+                const candidates = focusable.filter(function (candidate) {
+                    return stableKeys.length > 0 && stableKeys.every(function (key) {
+                        return candidate.dataset && candidate.dataset[key] === snapshot.data[key];
+                    });
+                });
+                const requestedIndex = Number(snapshot.data.index ?? snapshot.data.skillIndex ?? snapshot.data.entryIndex ?? 0);
+                target = candidates[Math.min(Math.max(requestedIndex, 0), candidates.length - 1)];
+            }
+            if (target && typeof target.focus === 'function') target.focus();
+        }
+
         function changed(rerender) {
+            const focusSnapshot = rerender ? captureRenderFocus() : null;
             revision += 1;
             latestBlobRevision = -1;
             latestPageCount = 0;
@@ -2957,6 +3009,40 @@
             updateValidation();
             scheduleSave();
             schedulePreview();
+            if (focusSnapshot && windowObject) {
+                const restore = function () { restoreRenderFocus(focusSnapshot); };
+                if (typeof windowObject.requestAnimationFrame === 'function') windowObject.requestAnimationFrame(restore);
+                else windowObject.setTimeout(restore, 0);
+            }
+        }
+
+        function setExpandedPreviewIsolation(panel, expanded) {
+            if (expanded) {
+                previewInertRecords.length = 0;
+                let current = panel;
+                while (current && current !== documentObject.body) {
+                    const parent = current.parentElement;
+                    if (!parent) break;
+                    Array.from(parent.children).forEach(function (sibling) {
+                        if (sibling === current || sibling.matches('[data-preview-backdrop]')) return;
+                        previewInertRecords.push([sibling, Boolean(sibling.inert)]);
+                        sibling.inert = true;
+                    });
+                    current = parent;
+                }
+                panel.setAttribute('role', 'dialog');
+                panel.setAttribute('aria-modal', 'true');
+                panel.setAttribute('aria-labelledby', 'rb-preview-title');
+                panel.setAttribute('aria-hidden', 'false');
+                return;
+            }
+
+            previewInertRecords.forEach(function (record) { record[0].inert = record[1]; });
+            previewInertRecords.length = 0;
+            panel.setAttribute('role', 'tabpanel');
+            panel.removeAttribute('aria-modal');
+            panel.setAttribute('aria-labelledby', 'rb-preview-tab');
+            onLayoutChange();
         }
 
         function notifyLimit(message) {
@@ -3199,6 +3285,7 @@
                 const panel = root.querySelector('[data-tab-panel="preview"]');
                 const backdrop = root.querySelector('[data-preview-backdrop]');
                 const expanded = panel ? !panel.classList.contains('is-expanded') : false;
+                if (expanded) expandedPreviewOpener = documentObject.activeElement;
                 if (panel) panel.classList.toggle('is-expanded', expanded);
                 if (backdrop) backdrop.hidden = !expanded;
                 root.classList.toggle('has-expanded-preview', expanded);
@@ -3207,7 +3294,14 @@
                 });
                 const label = root.querySelector('[data-preview-size-label]');
                 if (label) label.textContent = expanded ? 'Exit full screen' : 'Full screen';
-                if (expanded) schedulePreview(0);
+                if (panel) setExpandedPreviewIsolation(panel, expanded);
+                if (expanded) {
+                    schedulePreview(0);
+                    panel?.querySelector('[data-action="toggle-preview-size"]')?.focus();
+                } else if (expandedPreviewOpener && typeof expandedPreviewOpener.focus === 'function') {
+                    expandedPreviewOpener.focus();
+                    expandedPreviewOpener = null;
+                }
                 return;
             }
             if (action === 'add-custom-section') {
@@ -3364,13 +3458,28 @@
         }
 
         function onKeyDown(event) {
+            const expandedPreview = root.querySelector('.aw-rb-preview-panel.is-expanded');
+            if (expandedPreview && event.key === 'Tab') {
+                const focusable = Array.from(expandedPreview.querySelectorAll(
+                    'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), iframe, [tabindex]:not([tabindex="-1"])'))
+                    .filter(function (element) { return !element.hidden; });
+                if (focusable.length) {
+                    const first = focusable[0];
+                    const last = focusable[focusable.length - 1];
+                    if (event.shiftKey && documentObject.activeElement === first) {
+                        event.preventDefault();
+                        last.focus();
+                    } else if (!event.shiftKey && documentObject.activeElement === last) {
+                        event.preventDefault();
+                        first.focus();
+                    }
+                }
+            }
             if (event.key === 'Escape') {
-                const expandedPreview = root.querySelector('.aw-rb-preview-panel.is-expanded');
                 const backdrop = root.querySelector('[data-preview-backdrop]');
                 if (expandedPreview && backdrop) {
                     event.preventDefault();
                     handleAction(backdrop);
-                    root.querySelector('[data-action="toggle-preview-size"]')?.focus();
                     return;
                 }
             }

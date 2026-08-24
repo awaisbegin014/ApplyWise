@@ -1,4 +1,5 @@
 @model ApplyWise.Web.ViewModels.Settings.SettingsViewModel
+@using ApplyWise.Web.Services.AccountSecurity
 @{
     ViewData["Title"] = Model.IsAdmin ? "Owner security" : "Settings";
     var openSection = ViewData["SettingsOpenSection"]?.ToString();
@@ -32,7 +33,7 @@
     @if (!Model.IsAdmin)
     {
         <section class="panel aw-settings-card">
-            <div class="aw-settings-card-heading"><div><span class="aw-auth-kicker">Appearance</span><h2>Dashboard theme</h2><p>Choose the look of your signed-in workspace.</p></div></div>
+            <div class="aw-settings-card-heading"><div><span class="aw-auth-kicker">Appearance</span><h2>Workspace theme</h2><p>Choose the look of your signed-in workspace.</p></div></div>
             <label class="aw-settings-switch-row" for="theme-toggle"><span><strong>Dark mode</strong><small>Darken the dashboard after you sign in. Public and account pages always stay light.</small></span><input id="theme-toggle" type="checkbox" data-theme-toggle role="switch" /><i aria-hidden="true"></i></label>
         </section>
     }
@@ -80,7 +81,7 @@
                 else
                 {
                     <form asp-controller="GoogleSignInConnections" asp-action="Link" method="post">
-                        <button class="btn btn-secondary-soft" type="submit">Link Google</button>
+                        <button class="btn btn-secondary-soft" type="submit">Link Google account</button>
                     </form>
                 }
             </div>
@@ -95,7 +96,7 @@
                     {
                         <div><label asp-for="ChangePassword.CurrentPassword" class="form-label"></label><input asp-for="ChangePassword.CurrentPassword" class="form-control" autocomplete="current-password" /><span asp-validation-for="ChangePassword.CurrentPassword"></span></div>
                     }
-                    <div><label asp-for="ChangePassword.NewPassword" class="form-label"></label><input asp-for="ChangePassword.NewPassword" class="form-control" autocomplete="new-password" /><span asp-validation-for="ChangePassword.NewPassword"></span></div>
+                    <div><label asp-for="ChangePassword.NewPassword" class="form-label"></label><input asp-for="ChangePassword.NewPassword" class="form-control" autocomplete="new-password" aria-describedby="settings-password-requirements" /><small id="settings-password-requirements" class="aw-password-help">@PasswordRequirements.UserFacingSummary</small><span asp-validation-for="ChangePassword.NewPassword"></span></div>
                     <div><label asp-for="ChangePassword.ConfirmPassword" class="form-label"></label><input asp-for="ChangePassword.ConfirmPassword" class="form-control" autocomplete="new-password" /><span asp-validation-for="ChangePassword.ConfirmPassword"></span></div>
                     <div><label asp-for="ChangePassword.Code" class="form-label"></label><input asp-for="ChangePassword.Code" class="form-control" inputmode="numeric" autocomplete="one-time-code" /><span asp-validation-for="ChangePassword.Code"></span></div>
                     <button class="btn btn-primary" type="submit">@(Model.HasPassword ? "Change password" : "Add password")</button>

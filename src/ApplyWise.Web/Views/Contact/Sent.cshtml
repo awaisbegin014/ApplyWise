@@ -1,0 +1,30 @@
+@{
+    ViewData["Title"] = "Message sent";
+    ViewData["MetaDescription"] = "Your message has been sent to the ApplyWise owner inbox.";
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/home.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/contact.css" asp-append-version="true" />
+}
+
+<main id="main-content" class="aw-home aw-contact-page aw-contact-sent-page" role="main">
+    <section class="aw-contact-sent" aria-labelledby="contact-sent-title">
+        <div class="aw-contact-sent-card" role="status" tabindex="-1">
+            <span class="aw-contact-sent-icon" aria-hidden="true">&#10003;</span>
+            <span class="aw-home-kicker">Message sent</span>
+            <h1 id="contact-sent-title">Your message is in the owner inbox.</h1>
+            <p>Thank you for the context. If a reply is needed, it will be sent to the email address you provided.</p>
+            <div>
+                <a class="btn btn-primary btn-lg" asp-controller="Home" asp-action="Index">Return home</a>
+                <a class="btn btn-secondary-soft btn-lg" asp-controller="Contact" asp-action="Index">Send another message</a>
+            </div>
+        </div>
+    </section>
+</main>
+
+<partial name="~/Views/Home/_MarketingFooter.cshtml" />
+
+@section Scripts {
+    <script src="~/js/home.js" asp-append-version="true"></script>
+}

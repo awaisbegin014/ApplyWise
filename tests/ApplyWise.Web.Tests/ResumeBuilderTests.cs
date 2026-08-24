@@ -19,7 +19,7 @@ public sealed class ResumeBuilderTests
     {
         var sample = ResumeSampleFactory.Create();
 
-        Assert.Equal(4, ResumeDocument.CurrentSchemaVersion);
+        Assert.Equal(5, ResumeDocument.CurrentSchemaVersion);
         Assert.Equal(ResumeDocument.CurrentSchemaVersion, sample.SchemaVersion);
         Assert.Equal(ResumeDocument.DefaultTemplateId, sample.TemplateId);
         Assert.True(sample.TemplateSelectionConfirmed);
@@ -52,7 +52,11 @@ public sealed class ResumeBuilderTests
 
         Assert.NotEmpty(sample.Experience);
         Assert.Equal(3, sample.Experience.Count);
-        Assert.All(sample.Experience, entry => Assert.NotEmpty(entry.BulletPoints));
+        Assert.All(sample.Experience, entry =>
+        {
+            Assert.NotEmpty(entry.BulletPoints);
+            Assert.False(string.IsNullOrWhiteSpace(entry.TechnologySkills));
+        });
         Assert.NotEmpty(sample.Projects);
         Assert.Equal(3, sample.Projects.Count);
         Assert.All(sample.Projects, entry =>
@@ -156,6 +160,8 @@ public sealed class ResumeBuilderTests
             root.GetProperty("sections")[0].GetProperty("key").GetString());
         Assert.Equal(JsonValueKind.Array, root.GetProperty("customSections").ValueKind);
         Assert.Equal(2, root.GetProperty("references").GetArrayLength());
+        Assert.False(string.IsNullOrWhiteSpace(
+            root.GetProperty("experience")[0].GetProperty("technologySkills").GetString()));
         var firstSkill = root.GetProperty("skills")[0].GetProperty("skills")[0];
         Assert.Equal(JsonValueKind.Object, firstSkill.ValueKind);
         Assert.False(string.IsNullOrWhiteSpace(firstSkill.GetProperty("name").GetString()));

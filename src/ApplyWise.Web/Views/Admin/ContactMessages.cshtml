@@ -1,0 +1,112 @@
+@model ApplyWise.Web.ViewModels.Admin.AdminContactInboxViewModel
+@{
+    ViewData["Title"] = "Contact inbox";
+    ViewData["MetaDescription"] = "Private ApplyWise contact-message inbox.";
+}
+
+<div class="admin-dashboard admin-contact-inbox">
+    <section class="page-heading admin-heading">
+        <div>
+            <span class="eyebrow">Private owner inbox</span>
+            <h1>Contact messages</h1>
+            <p>Questions and support requests submitted through the public Contact Us page.</p>
+        </div>
+        <a class="btn btn-outline-primary" asp-action="Index">Owner dashboard</a>
+    </section>
+
+    <section class="admin-metric-grid admin-contact-metric-grid" aria-label="Contact message totals">
+        <article class="metric-card admin-metric-card"><span>All messages</span><strong>@Model.TotalMessages</strong><small>Stored submissions</small></article>
+        <article class="metric-card admin-metric-card"><span>Unread</span><strong>@Model.UnreadMessages</strong><small>Need review</small></article>
+        <article class="metric-card admin-metric-card"><span>Read</span><strong>@Model.ReadMessages</strong><small>Already reviewed</small></article>
+    </section>
+
+    <section class="panel admin-users-panel admin-contact-panel">
+        <header class="panel-heading">
+            <div><span class="eyebrow">Inbox</span><h3>Messages</h3></div>
+            <small>@Model.TotalMatchingMessages matching · page @Model.Page of @Model.TotalPages · UTC</small>
+        </header>
+
+        <form method="get" class="admin-contact-filters" role="search">
+            <div>
+                <label class="visually-hidden" for="admin-contact-search">Search contact messages</label>
+                <input id="admin-contact-search" class="form-control" type="search" name="search" value="@Model.Search" maxlength="320" placeholder="Search name, email, or subject" />
+            </div>
+            <div>
+                <label class="visually-hidden" for="admin-contact-status">Message status</label>
+                <select id="admin-contact-status" class="form-select" name="status">
+                    @if (Model.Status == "all")
+                    {
+                        <option value="all" selected>All messages</option>
+                    }
+                    else
+                    {
+                        <option value="all">All messages</option>
+                    }
+                    @if (Model.Status == "unread")
+                    {
+                        <option value="unread" selected>Unread only</option>
+                    }
+                    else
+                    {
+                        <option value="unread">Unread only</option>
+                    }
+                    @if (Model.Status == "read")
+                    {
+                        <option value="read" selected>Read only</option>
+                    }
+                    else
+                    {
+                        <option value="read">Read only</option>
+                    }
+                </select>
+            </div>
+            <button class="btn btn-primary" type="submit">Filter</button>
+            @if (Model.Search is not null || Model.Status != "all")
+            {
+                <a class="btn btn-outline-secondary" asp-action="ContactMessages">Clear</a>
+            }
+        </form>
+
+        <div class="table-responsive">
+            <table class="table app-table admin-contact-table">
+                <caption class="visually-hidden">Contact messages submitted to ApplyWise</caption>
+                <thead><tr><th scope="col">Sender</th><th scope="col">Topic and subject</th><th scope="col">Message</th><th scope="col">Received</th><th scope="col">Status</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead>
+                <tbody>
+                @if (Model.Messages.Count == 0)
+                {
+                    <tr><td colspan="6"><div class="admin-empty admin-compact-empty"><strong>No messages found</strong><span>New contact requests will appear here.</span></div></td></tr>
+                }
+                @foreach (var message in Model.Messages)
+                {
+                    <tr class="admin-contact-row @(message.IsRead ? null : "is-unread")">
+                        <td data-label="Sender"><strong>@message.FullName</strong><span>@message.Email</span></td>
+                        <td data-label="Topic and subject"><strong>@message.Subject</strong><span>@message.Topic</span></td>
+                        <td data-label="Message"><span class="admin-contact-preview">@message.Preview</span></td>
+                        <td data-label="Received"><time datetime="@message.CreatedAt.ToString("O")">@message.CreatedAt.ToUniversalTime().ToString("MMM d, yyyy h:mm tt 'UTC'")</time></td>
+                        <td data-label="Status"><span class="badge @(message.IsRead ? "badge-neutral" : "badge-warning")">@(message.IsRead ? "Read" : "Unread")</span></td>
+                        <td data-label="Action"><a class="btn btn-outline-primary btn-sm" asp-action="ContactMessage" asp-route-id="@message.Id" aria-label="Open message from @message.FullName">Open</a></td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+
+        <nav class="admin-pagination" aria-label="Contact message pages">
+            @if (Model.HasPreviousPage)
+            {
+                <a class="btn btn-outline-primary btn-sm" asp-action="ContactMessages" asp-route-status="@Model.Status" asp-route-search="@Model.Search" asp-route-page="@(Model.Page - 1)">← Previous</a>
+            }
+            <span>Showing page @Model.Page of @Model.TotalPages</span>
+            @if (Model.HasNextPage)
+            {
+                <a class="btn btn-outline-primary btn-sm" asp-action="ContactMessages" asp-route-status="@Model.Status" asp-route-search="@Model.Search" asp-route-page="@(Model.Page + 1)">Next →</a>
+            }
+        </nav>
+    </section>
+
+    <p class="admin-generated">Generated @Model.GeneratedAt.ToUniversalTime().ToString("MMM d, yyyy 'at' h:mm:ss tt 'UTC'")</p>
+</div>
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/admin.css" asp-append-version="true" />
+}

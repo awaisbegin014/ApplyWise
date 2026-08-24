@@ -35,6 +35,26 @@ public sealed class AdminOnlyAccountMiddleware(
 
     public async Task InvokeAsync(HttpContext context)
     {
+        var path = context.Request.Path;
+        if (context.User.Identity?.IsAuthenticated == true
+            && path.StartsWithSegments(
+                "/Identity/Account/Manage",
+                StringComparison.OrdinalIgnoreCase)
+            && !MfaManagementPaths.Any(candidate => IsExactPath(path, candidate)))
+        {
+            if (HttpMethods.IsGet(context.Request.Method)
+                || HttpMethods.IsHead(context.Request.Method))
+            {
+                context.Response.Redirect("/settings");
+            }
+            else
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            }
+
+            return;
+        }
+
         var authenticatedEmail = context.User.FindFirstValue(ClaimTypes.Email)
             ?? context.User.Identity?.Name;
         var hasAdminRole = context.User.IsInRole(AdminAccess.Role);
@@ -45,8 +65,6 @@ public sealed class AdminOnlyAccountMiddleware(
             await next(context);
             return;
         }
-
-        var path = context.Request.Path;
 
         if (isConfiguredAdmin && !hasAdminRole)
         {
@@ -84,12 +102,30 @@ public sealed class AdminOnlyAccountMiddleware(
             return;
         }
 
+        if (MfaManagementPaths.Any(candidate => IsExactPath(path, candidate)))
+        {
+            if (hasRequiredMfa)
+            {
+                await next(context);
+            }
+            else if (HttpMethods.IsGet(context.Request.Method)
+                     || HttpMethods.IsHead(context.Request.Method))
+            {
+                context.Response.Redirect("/settings");
+            }
+            else
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            }
+
+            return;
+        }
+
         if (IsStaticAsset(path)
             || IsExactPath(path, "/Home/Error")
-            || IsExactPath(path, "/health")
+            || path.StartsWithSegments("/health", StringComparison.OrdinalIgnoreCase)
             || IsExactPath(path, "/Identity/Account/AccessDenied")
-            || IsExactPath(path, "/Identity/Account/Logout")
-            || MfaManagementPaths.Any(candidate => IsExactPath(path, candidate)))
+            || IsExactPath(path, "/Identity/Account/Logout"))
         {
             await next(context);
             return;

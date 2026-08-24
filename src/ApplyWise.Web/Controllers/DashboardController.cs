@@ -4,6 +4,7 @@ using ApplyWise.Web.Services.AccountSecurity;
 using ApplyWise.Web.Services.Dashboard;
 using ApplyWise.Web.Services.Gmail;
 using ApplyWise.Web.Services.ResumeStorage;
+using ApplyWise.Web.Services.Security;
 using ApplyWise.Web.ViewModels.Settings;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authorization;
@@ -22,7 +23,11 @@ public class DashboardController(
     IDashboardReadService dashboardReadService,
     IAccountSecurityCodeService securityCodes,
     SignInManager<IdentityUser> signInManager,
-    IOptions<GoogleIntegrationOptions> googleOptions) : Controller
+    IOptions<GoogleIntegrationOptions> googleOptions,
+    IApplicationLockProvider operationLocks,
+    IGmailCredentialProtector gmailCredentialProtector,
+    IHttpClientFactory httpClientFactory,
+    ILogger<DashboardController> logger) : Controller
 {
     public async Task<IActionResult> Index(ApplicationStatus? tab)
     {
@@ -124,43 +129,89 @@ public class DashboardController(
             return await SettingsWithErrorsAsync("delete");
         }
 
-        var resumePaths = await dbContext.Resumes.AsNoTracking()
-            .Where(resume => resume.UserId == user.Id)
-            .Select(resume => resume.FilePath).ToListAsync(HttpContext.RequestAborted);
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(HttpContext.RequestAborted);
-        try
+        var gmailRevocationConfirmed = true;
+        await using (var operationLease = await operationLocks.TryAcquireAsync(
+            $"gmail-user:{user.Id}",
+            Timeout.InfiniteTimeSpan,
+            HttpContext.RequestAborted)
+            ?? throw new ResourceLockUnavailableException(
+                "The account could not be locked for deletion."))
         {
-            var now = DateTimeOffset.UtcNow;
-            dbContext.ResumeFileCleanups.AddRange(resumePaths.Select(path => new ResumeFileCleanup
+            dbContext.ChangeTracker.Clear();
+            var currentUser = await userManager.FindByIdAsync(user.Id);
+            if (currentUser is null)
             {
-                FilePath = path,
-                CreatedAt = now,
-                NextAttemptAt = now
-            }));
-            await dbContext.SaveChangesAsync(HttpContext.RequestAborted);
+                await signInManager.SignOutAsync();
+                TempData["StatusMessage"] = "Your ApplyWise account was already deleted.";
+                return RedirectToPage("/Account/Login", new { area = "Identity" });
+            }
 
-            var result = await userManager.DeleteAsync(user);
+            var gmailConnection = await dbContext.GmailConnections
+                .SingleOrDefaultAsync(
+                    connection => connection.UserId == currentUser.Id,
+                    HttpContext.RequestAborted);
+            if (gmailConnection is not null)
+            {
+                gmailConnection.AutoAddHighConfidenceApplications = false;
+                gmailConnection.NextSyncAt = DateTimeOffset.MaxValue;
+                gmailConnection.LastErrorCode = GmailConnectionStates.RevocationPending;
+                gmailConnection.UpdatedAt = DateTimeOffset.UtcNow;
+                await dbContext.SaveChangesAsync(HttpContext.RequestAborted);
+
+                gmailRevocationConfirmed =
+                    await GmailTokenRevocation.TryRevokeStoredTokenAsync(
+                        gmailConnection,
+                        gmailCredentialProtector,
+                        httpClientFactory,
+                        logger,
+                        HttpContext.RequestAborted);
+            }
+
+            var resumePaths = await dbContext.Resumes.AsNoTracking()
+                .Where(resume => resume.UserId == currentUser.Id)
+                .Select(resume => resume.FilePath)
+                .Distinct()
+                .ToListAsync(HttpContext.RequestAborted);
+            var queuedPaths = resumePaths.Count == 0
+                ? []
+                : await dbContext.ResumeFileCleanups
+                    .AsNoTracking()
+                    .Where(cleanup => resumePaths.Contains(cleanup.FilePath))
+                    .Select(cleanup => cleanup.FilePath)
+                    .ToListAsync(HttpContext.RequestAborted);
+            var queuedPathSet = queuedPaths.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var now = DateTimeOffset.UtcNow;
+            var newCleanupRows = resumePaths
+                .Where(path => queuedPathSet.Add(path))
+                .Select(path => new ResumeFileCleanup
+                {
+                    FilePath = path,
+                    CreatedAt = now,
+                    NextAttemptAt = now
+                })
+                .ToList();
+            dbContext.ResumeFileCleanups.AddRange(newCleanupRows);
+
+            var result = await userManager.DeleteAsync(currentUser);
             if (!result.Succeeded)
             {
-                await transaction.RollbackAsync(HttpContext.RequestAborted);
+                foreach (var cleanup in newCleanupRows)
+                {
+                    dbContext.Entry(cleanup).State = EntityState.Detached;
+                }
+                dbContext.Entry(currentUser).State = EntityState.Unchanged;
                 foreach (var error in result.Errors)
                 {
                     ModelState.AddModelError(string.Empty, error.Description);
                 }
                 return await SettingsWithErrorsAsync("delete");
             }
-
-            await transaction.CommitAsync(HttpContext.RequestAborted);
-        }
-        catch
-        {
-            await transaction.RollbackAsync(CancellationToken.None);
-            throw;
         }
 
         await signInManager.SignOutAsync();
-        TempData["StatusMessage"] =
-            "Your ApplyWise account data was deleted. Private resume files are queued for secure removal.";
+        TempData["StatusMessage"] = gmailRevocationConfirmed
+            ? "Your ApplyWise account data was deleted. Private resume files are queued for secure removal."
+            : "Your ApplyWise account data was deleted and Gmail syncing was disabled, but Google did not confirm token revocation. Remove ApplyWise from your Google Account permissions to finish disconnecting it.";
         return RedirectToPage("/Account/Login", new { area = "Identity" });
     }
 

@@ -17,7 +17,7 @@ namespace ApplyWise.Web.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.5")
+                .HasAnnotation("ProductVersion", "10.0.11")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -35,11 +35,6 @@ namespace ApplyWise.Web.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");
 
-                    b.Property<byte[]>("CodeHash")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("varbinary(32)");
-
                     b.Property<DateTimeOffset?>("ConsumedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -52,10 +47,9 @@ namespace ApplyWise.Web.Migrations
                     b.Property<int>("FailedAttemptCount")
                         .HasColumnType("int");
 
-                    b.Property<byte[]>("Salt")
+                    b.Property<byte[]>("ProtectedCode")
                         .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("varbinary(16)");
+                        .HasColumnType("varbinary(512)");
 
                     b.Property<string>("UserId")
                         .IsRequired()
@@ -258,6 +252,59 @@ namespace ApplyWise.Web.Migrations
                     b.ToTable("CareerProfiles");
                 });
 
+            modelBuilder.Entity("ApplyWise.Web.Models.ContactMessage", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTimeOffset?>("ReadAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("Topic")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("UserId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("ReadAt", "CreatedAt");
+
+                    b.ToTable("ContactMessages");
+                });
+
             modelBuilder.Entity("ApplyWise.Web.Models.GmailConnection", b =>
                 {
                     b.Property<int>("Id")
@@ -311,6 +358,24 @@ namespace ApplyWise.Web.Migrations
                         .IsUnique();
 
                     b.ToTable("GmailConnections");
+                });
+
+            modelBuilder.Entity("ApplyWise.Web.Models.GmailOAuthFlow", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("FlowId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("GmailOAuthFlows");
                 });
 
             modelBuilder.Entity("ApplyWise.Web.Models.Interview", b =>
@@ -704,6 +769,9 @@ namespace ApplyWise.Web.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");
 
+                    b.Property<long>("SnapshotSizeBytes")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("SuggestionsJson")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -1046,11 +1114,32 @@ namespace ApplyWise.Web.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("ApplyWise.Web.Models.ContactMessage", b =>
+                {
+                    b.HasOne("Microsoft.AspNetCore.Identity.IdentityUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("ApplyWise.Web.Models.GmailConnection", b =>
                 {
                     b.HasOne("Microsoft.AspNetCore.Identity.IdentityUser", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("ApplyWise.Web.Models.GmailOAuthFlow", b =>
+                {
+                    b.HasOne("Microsoft.AspNetCore.Identity.IdentityUser", "User")
+                        .WithOne()
+                        .HasForeignKey("ApplyWise.Web.Models.GmailOAuthFlow", "UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 

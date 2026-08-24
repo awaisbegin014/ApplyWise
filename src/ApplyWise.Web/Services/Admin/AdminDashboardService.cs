@@ -1,4 +1,5 @@
 using ApplyWise.Web.Data;
+using ApplyWise.Web.Models;
 using ApplyWise.Web.Services.Monitoring;
 using ApplyWise.Web.ViewModels.Admin;
 using Microsoft.EntityFrameworkCore;
@@ -39,6 +40,7 @@ public sealed class AdminDashboardService(
             [ProductEventNames.InterviewScheduled] = "Interviews scheduled",
             [ProductEventNames.ScamCheckCompleted] = "Scam checks completed"
         };
+    private static readonly string[] AggregatedEventNames = EventLabels.Keys.ToArray();
 
     public async Task<AdminDashboardViewModel> LoadAsync(
         int days,
@@ -107,57 +109,100 @@ public sealed class AdminDashboardService(
             .Take(UserPageSize)
             .ToListAsync(cancellationToken);
 
-        var eventRows = await dbContext.ProductEvents
+        var eventQuery = dbContext.ProductEvents
             .AsNoTracking()
             .Where(productEvent => productEvent.OccurredAt >= rangeStart
-                && (productEvent.UserId == null || !adminUserIds.Contains(productEvent.UserId)))
+                && (productEvent.UserId == null || !adminUserIds.Contains(productEvent.UserId)));
+        var dailyEventRows = await eventQuery
+            .GroupBy(productEvent => productEvent.OccurredAt.Date)
             .Select(productEvent => new
             {
-                productEvent.Name,
-                productEvent.UserId,
-                productEvent.Succeeded,
-                productEvent.OccurredAt
+                Date = productEvent.Key,
+                Events = productEvent.Count(),
+                ActiveUsers = productEvent
+                    .Where(item => item.UserId != null)
+                    .Select(item => item.UserId)
+                    .Distinct()
+                    .Count()
             })
             .ToListAsync(cancellationToken);
 
-        var registrations = await dbContext.UserAccountActivities
+        var dailyRegistrationRows = await dbContext.UserAccountActivities
             .AsNoTracking()
             .Where(activity => activity.RegisteredAt >= rangeStart
                 && !adminUserIds.Contains(activity.UserId))
-            .Select(activity => new { activity.UserId, activity.RegisteredAt })
+            .GroupBy(activity => activity.RegisteredAt.Date)
+            .Select(group => new
+            {
+                Date = group.Key,
+                Signups = group.Count()
+            })
             .ToListAsync(cancellationToken);
+
+        var featureUsageRows = await eventQuery
+            .Where(productEvent => productEvent.Succeeded
+                && AggregatedEventNames.Contains(productEvent.Name))
+            .GroupBy(productEvent => productEvent.Name)
+            .Select(group => new
+            {
+                EventName = group.Key,
+                Count = group.Count(),
+                UniqueUsers = group
+                    .Where(item => item.UserId != null)
+                    .Select(item => item.UserId)
+                    .Distinct()
+                    .Count()
+            })
+            .ToListAsync(cancellationToken);
+
+        var failedEventsInRange = await eventQuery.CountAsync(
+            productEvent => !productEvent.Succeeded,
+            cancellationToken);
+
+        var dailyEvents = dailyEventRows.ToDictionary(
+            row => DateOnly.FromDateTime(row.Date));
+        var dailyRegistrations = dailyRegistrationRows.ToDictionary(
+            row => DateOnly.FromDateTime(row.Date));
 
         var dailyActivity = Enumerable.Range(0, days)
             .Select(offset => rangeStartDate.AddDays(offset))
-            .Select(date =>
-            {
-                var dayEvents = eventRows.Where(row =>
-                    DateOnly.FromDateTime(row.OccurredAt.UtcDateTime) == date).ToArray();
-                return new AdminDailyActivityViewModel(
-                    date,
-                    registrations.Count(row =>
-                        DateOnly.FromDateTime(row.RegisteredAt.UtcDateTime) == date),
-                    dayEvents.Where(row => row.UserId != null)
-                        .Select(row => row.UserId)
-                        .Distinct(StringComparer.Ordinal)
-                        .Count(),
-                    dayEvents.Length);
-            })
+            .Select(date => new AdminDailyActivityViewModel(
+                date,
+                dailyRegistrations.TryGetValue(date, out var registration)
+                    ? registration.Signups
+                    : 0,
+                dailyEvents.TryGetValue(date, out var events)
+                    ? events.ActiveUsers
+                    : 0,
+                events?.Events ?? 0))
             .ToArray();
 
-        var featureUsage = eventRows
-            .Where(row => EventLabels.ContainsKey(row.Name) && row.Succeeded)
-            .GroupBy(row => row.Name, StringComparer.Ordinal)
-            .Select(group => new AdminFeatureUsageViewModel(
-                group.Key,
-                EventLabels[group.Key],
-                group.Count(),
-                group.Where(row => row.UserId != null)
-                    .Select(row => row.UserId)
-                    .Distinct(StringComparer.Ordinal)
-                    .Count()))
+        var featureUsage = featureUsageRows
+            .Select(row => new AdminFeatureUsageViewModel(
+                row.EventName,
+                EventLabels[row.EventName],
+                row.Count,
+                row.UniqueUsers))
             .OrderByDescending(item => item.Count)
             .ToArray();
+
+        var recentContactRows = await dbContext.ContactMessages
+            .AsNoTracking()
+            .OrderBy(message => message.ReadAt != null)
+            .ThenByDescending(message => message.CreatedAt)
+            .ThenByDescending(message => message.Id)
+            .Take(5)
+            .Select(message => new
+            {
+                message.Id,
+                message.FullName,
+                message.Email,
+                message.Topic,
+                message.Subject,
+                message.CreatedAt,
+                IsRead = message.ReadAt != null
+            })
+            .ToListAsync(cancellationToken);
 
         return new AdminDashboardViewModel
         {
@@ -198,7 +243,11 @@ public sealed class AdminDashboardService(
             TotalInterviews = await dbContext.Interviews.CountAsync(
                 interview => !adminUserIds.Contains(interview.UserId),
                 cancellationToken),
-            FailedEventsInRange = eventRows.Count(row => !row.Succeeded),
+            TotalContactMessages = await dbContext.ContactMessages.CountAsync(cancellationToken),
+            UnreadContactMessages = await dbContext.ContactMessages.CountAsync(
+                message => message.ReadAt == null,
+                cancellationToken),
+            FailedEventsInRange = failedEventsInRange,
             Users = users.Select(user => new AdminUserRowViewModel(
                 user.Id,
                 user.Email,
@@ -214,7 +263,16 @@ public sealed class AdminDashboardService(
                 user.InterviewCount,
                 user.OnboardingCompleted)).ToArray(),
             DailyActivity = dailyActivity,
-            FeatureUsage = featureUsage
+            FeatureUsage = featureUsage,
+            RecentContactMessages = recentContactRows.Select(message =>
+                new AdminContactPreviewViewModel(
+                    message.Id,
+                    message.FullName,
+                    message.Email,
+                    message.Topic.GetDisplayName(),
+                    message.Subject,
+                    message.CreatedAt,
+                    message.IsRead)).ToArray()
         };
     }
 

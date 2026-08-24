@@ -1,6 +1,7 @@
 using ApplyWise.Web.Data;
 using ApplyWise.Web.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace ApplyWise.Web.Services.Monitoring;
 
@@ -36,6 +37,7 @@ public interface IProductEventRecorder
 public sealed class ProductEventRecorder(
     ApplicationDbContext dbContext,
     TimeProvider timeProvider,
+    IOptions<ProductEventRetentionOptions> options,
     ILogger<ProductEventRecorder> logger) : IProductEventRecorder
 {
     public Task RecordAsync(
@@ -43,8 +45,19 @@ public sealed class ProductEventRecorder(
         string source,
         string? userId = null,
         bool succeeded = true,
-        CancellationToken cancellationToken = default) =>
-        SaveBestEffortAsync(
+        CancellationToken cancellationToken = default)
+    {
+        // Anonymous login failures are adversary-controlled and have no safe
+        // per-row cardinality bound. Rate-limit/host metrics may observe them,
+        // but they must not become durable product-event rows.
+        if (!succeeded
+            && userId is null
+            && name.Equals(ProductEventNames.LoginFailed, StringComparison.Ordinal))
+        {
+            return Task.CompletedTask;
+        }
+
+        return SaveBestEffortAsync(
             new ProductEvent
             {
                 Name = Normalize(name, 64),
@@ -54,6 +67,7 @@ public sealed class ProductEventRecorder(
                 OccurredAt = timeProvider.GetUtcNow()
             },
             cancellationToken);
+    }
 
     public async Task RecordLoginAsync(
         string userId,
@@ -80,14 +94,6 @@ public sealed class ProductEventRecorder(
             activity.LastLoginProvider = Normalize(source, 30);
             activity.TotalSuccessfulLogins++;
 
-            dbContext.ProductEvents.Add(new ProductEvent
-            {
-                Name = ProductEventNames.LoginSucceeded,
-                Source = Normalize(source, 32),
-                UserId = userId,
-                Succeeded = true,
-                OccurredAt = now
-            });
             await dbContext.SaveChangesAsync(cancellationToken);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -100,6 +106,12 @@ public sealed class ProductEventRecorder(
     {
         try
         {
+            if (await dbContext.ProductEvents.CountAsync(cancellationToken)
+                >= options.Value.MaxStoredEvents)
+            {
+                return;
+            }
+
             dbContext.ProductEvents.Add(productEvent);
             await dbContext.SaveChangesAsync(cancellationToken);
         }

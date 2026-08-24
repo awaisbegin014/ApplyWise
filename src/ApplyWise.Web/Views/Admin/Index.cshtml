@@ -104,11 +104,40 @@
         </article>
     </section>
 
-    <section class="admin-object-grid" aria-label="Stored product objects">
+    <section class="admin-object-grid" aria-label="Operational totals">
         <article class="panel"><span>Applications</span><strong>@Model.TotalApplications</strong></article>
         <article class="panel"><span>Resumes</span><strong>@Model.TotalResumes</strong></article>
         <article class="panel"><span>Analyses</span><strong>@Model.TotalAnalyses</strong></article>
         <article class="panel"><span>Interviews</span><strong>@Model.TotalInterviews</strong></article>
+        <a class="panel admin-contact-object" asp-action="ContactMessages">
+            <span>Contact inbox<small>@Model.TotalContactMessages total</small></span>
+            <strong>@Model.UnreadContactMessages<small> unread</small></strong>
+        </a>
+    </section>
+
+    <section class="panel admin-contact-preview-panel">
+        <header class="panel-heading">
+            <div><span class="eyebrow">Support</span><h3>Recent contact messages</h3></div>
+            <a class="btn btn-outline-primary btn-sm" asp-action="ContactMessages">Open inbox</a>
+        </header>
+        @if (Model.RecentContactMessages.Count == 0)
+        {
+            <div class="admin-empty admin-compact-empty"><strong>No contact messages yet</strong><span>Messages from the public Contact Us page will appear here.</span></div>
+        }
+        else
+        {
+            <div class="admin-contact-preview-list">
+                @foreach (var message in Model.RecentContactMessages)
+                {
+                    <a class="@(message.IsRead ? null : "is-unread")" asp-action="ContactMessage" asp-route-id="@message.Id">
+                        <span class="admin-contact-status-dot" aria-hidden="true"></span>
+                        <span><strong>@message.Subject</strong><small>@message.FullName · @message.Email · @message.Topic</small></span>
+                        <time datetime="@message.CreatedAt.ToString("O")">@message.CreatedAt.ToUniversalTime().ToString("MMM d, h:mm tt 'UTC'")</time>
+                        <span class="badge @(message.IsRead ? "badge-neutral" : "badge-warning")">@(message.IsRead ? "Read" : "Unread")</span>
+                    </a>
+                }
+            </div>
+        }
     </section>
 
     <section class="panel admin-users-panel">

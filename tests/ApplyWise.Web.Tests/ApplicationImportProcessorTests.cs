@@ -1,6 +1,7 @@
 using ApplyWise.Web.Data;
 using ApplyWise.Web.Models;
 using ApplyWise.Web.Services.Gmail;
+using ApplyWise.Web.Services.Security;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -92,6 +93,38 @@ public sealed class ApplicationImportProcessorTests
         Assert.Equal(ApplicationImportStatus.AutoAccepted, storedImport.Status);
         Assert.Equal(application.Id, storedImport.CreatedApplicationId);
         Assert.NotNull(storedImport.ReviewedAt);
+    }
+
+    [Fact]
+    public async Task TryAutoAccept_RevocationStartsAtQuotaGate_RemainsPending()
+    {
+        await using var db = CreateContext();
+        var connection = await SeedConnectionAsync(db, UserId, autoAdd: true);
+        var import = await SeedImportAsync(db, connection);
+        var quotaGate = new BeforeActionQuotaGate(async cancellationToken =>
+        {
+            var currentConnection = await db.GmailConnections.SingleAsync(
+                item => item.Id == connection.Id,
+                cancellationToken);
+            currentConnection.LastErrorCode = GmailConnectionStates.RevocationPending;
+            currentConnection.UpdatedAt = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync(cancellationToken);
+        });
+        var processor = new ApplicationImportProcessor(
+            db,
+            NullLogger<ApplicationImportProcessor>.Instance,
+            quotaGate: quotaGate);
+
+        var result = await processor.TryAutoAcceptAsync(
+            import.Id,
+            UserId,
+            CancellationToken.None);
+
+        Assert.Equal(ApplicationImportProcessOutcome.NotEligible, result.Outcome);
+        Assert.Empty(await db.JobApplications.ToListAsync());
+        var storedImport = await db.ApplicationImports.SingleAsync();
+        Assert.Equal(ApplicationImportStatus.PendingReview, storedImport.Status);
+        Assert.Null(storedImport.CreatedApplicationId);
     }
 
     [Fact]
@@ -406,6 +439,22 @@ public sealed class ApplicationImportProcessorTests
     private static ApplicationImportProcessor CreateProcessor(
         ApplicationDbContext db) =>
         new(db, NullLogger<ApplicationImportProcessor>.Instance);
+
+    private sealed class BeforeActionQuotaGate(
+        Func<CancellationToken, Task> beforeAction) : IWorkspaceQuotaGate
+    {
+        public async Task<TResult> RunAsync<TResult>(
+            string resource,
+            string userId,
+            Func<CancellationToken, Task<TResult>> action,
+            CancellationToken cancellationToken = default)
+        {
+            Assert.Equal(WorkspaceQuotaResources.Applications, resource);
+            Assert.Equal(UserId, userId);
+            await beforeAction(cancellationToken);
+            return await action(cancellationToken);
+        }
+    }
 
     private static async Task<GmailConnection> SeedConnectionAsync(
         ApplicationDbContext db,

@@ -2,6 +2,7 @@ using System.Text;
 using ApplyWise.Web.Data;
 using ApplyWise.Web.Services.ResumeAnalysis;
 using ApplyWise.Web.Services.ResumeStorage;
+using ApplyWise.Web.Services.Security;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -213,7 +214,8 @@ public sealed class ResumeIngestionServiceTests
                 MaxBytesPerUser = 50 * 1024 * 1024,
                 ExtractionTimeoutSeconds = 15
             }),
-            NullLogger<ResumeIngestionService>.Instance);
+            NullLogger<ResumeIngestionService>.Instance,
+            new WorkspaceQuotaGate(context));
 
     private sealed class NoOpProductEventRecorder : IProductEventRecorder
     {

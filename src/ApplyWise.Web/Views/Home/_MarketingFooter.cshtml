@@ -1,0 +1,29 @@
+<footer class="aw-home-footer">
+    <div class="aw-home-container aw-home-footer-grid">
+        <div class="aw-home-footer-brand">
+            <a class="brand" asp-controller="Home" asp-action="Index"><img class="brand-mark" src="~/images/applywise-logo-v2.png" width="34" height="34" alt="" /><span>ApplyWise</span></a>
+            <p>A private workspace for a clearer, more intentional job search.</p>
+        </div>
+        <nav aria-label="Product links">
+            <h2>Product</h2>
+            <a asp-controller="Home" asp-action="JobTracker">Job tracker</a>
+            <a asp-controller="Home" asp-action="ResumeMatch">Resume match</a>
+            <a asp-controller="Home" asp-action="ResumeBuilder">Resume builder</a>
+            <a asp-controller="Home" asp-action="HowItWorks">How it works</a>
+            <a asp-controller="Home" asp-action="Index" asp-fragment="faq">FAQs</a>
+        </nav>
+        <nav aria-label="Account links">
+            <h2>Account</h2>
+            <a asp-area="Identity" asp-page="/Account/Register">Create account</a>
+            <a asp-area="Identity" asp-page="/Account/Login">Sign in</a>
+        </nav>
+        <nav aria-label="Legal and support links">
+            <h2>Legal &amp; support</h2>
+            <a asp-controller="Home" asp-action="Privacy">Privacy</a>
+            <a asp-controller="Home" asp-action="Terms">Terms</a>
+            <a asp-controller="Home" asp-action="Support">Support</a>
+            <a asp-controller="Contact" asp-action="Index">Contact us</a>
+        </nav>
+    </div>
+    <div class="aw-home-container aw-home-footer-bottom"><span>&copy; @DateTime.UtcNow.Year ApplyWise. All rights reserved.</span><a href="#main-content">Back to top <span aria-hidden="true">&uarr;</span></a></div>
+</footer>

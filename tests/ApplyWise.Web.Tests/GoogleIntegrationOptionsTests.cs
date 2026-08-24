@@ -31,5 +31,8 @@ public sealed class GoogleIntegrationOptionsTests
         };
 
         Assert.True(options.IsConfigured);
+        Assert.False(options.IsGmailImportConfigured);
+        options.GmailImportEnabled = true;
+        Assert.True(options.IsGmailImportConfigured);
     }
 }

@@ -2,7 +2,7 @@
 
 ## Supported version
 
-Security fixes are applied to the current `main` branch and the currently deployed release.
+Security fixes are applied to the current `master` branch and the currently deployed release.
 
 ## Reporting a vulnerability
 

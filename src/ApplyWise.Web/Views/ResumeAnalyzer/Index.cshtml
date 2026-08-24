@@ -22,7 +22,7 @@
         else
         {
             <div>
-                <span class="aw-kicker"><svg class="ui-icon" aria-hidden="true"><use href="#i-file" /></svg>ATS Resume Check</span>
+                <span class="aw-kicker"><svg class="ui-icon" aria-hidden="true"><use href="#i-file" /></svg>ATS resume check</span>
                 <h1>Upload your resume. See what is missing.</h1>
                 <p>No job description needed. Get a readiness estimate, document checks, missing-section checks, and clear improvement guidance.</p>
             </div>
@@ -40,7 +40,7 @@
                     <div class="aw-inline-notice"><span class="aw-stat-icon"><svg class="ui-icon"><use href="#i-file" /></svg></span><div><strong>Your resume library is empty</strong><p>Upload a resume from the ATS Resume Check tab first.</p></div><a class="btn btn-sm btn-primary" asp-action="Index" asp-route-mode="ats">Upload resume</a></div>
                 }
 
-                <div class="aw-section-heading"><div><span class="aw-kicker">Job Match</span><h3>Compare this resume with a role</h3><p>Use the complete job description so the report can check skills, responsibilities, and qualifications.</p></div><span class="aw-count-badge">1 resume</span></div>
+                <div class="aw-section-heading"><div><span class="aw-kicker">Job match</span><h3>Compare this resume with a role</h3><p>Use the complete job description so the report can check skills, responsibilities, and qualifications.</p></div><span class="aw-count-badge">1 resume</span></div>
                 <form asp-action="AnalyzePastedRequirements" method="post" class="aw-guided-form">
                     <div asp-validation-summary="ModelOnly" class="validation-summary" role="alert"></div>
                     <label class="aw-field">
@@ -112,4 +112,8 @@
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
     <script src="~/js/resume-analyzer.js" asp-append-version="true"></script>
+}
+@if (TempData["AnalysisError"] is string analysisError)
+{
+    <div class="alert app-alert" role="alert">@analysisError</div>
 }

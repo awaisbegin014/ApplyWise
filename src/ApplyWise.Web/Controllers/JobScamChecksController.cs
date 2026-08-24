@@ -8,6 +8,8 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ApplyWise.Web.Services.Monitoring;
+using ApplyWise.Web.Services.Security;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace ApplyWise.Web.Controllers;
 
@@ -17,10 +19,15 @@ public class JobScamChecksController(
     ApplicationDbContext dbContext,
     UserManager<IdentityUser> userManager,
     IJobScamDetectorService detectorService,
-    IProductEventRecorder events) : Controller
+    IProductEventRecorder events,
+    IWorkspaceQuotaService quotas,
+    IWorkspaceQuotaGate quotaGate) : Controller
 {
+    private const int HistoryPageSize = 25;
+
     [HttpPost("analyze")]
     [ValidateAntiForgeryToken]
+    [EnableRateLimiting("scam-check")]
     public async Task<IActionResult> Analyze(RunScamCheckViewModel model)
     {
         if (!ModelState.IsValid) return BadRequest();
@@ -28,6 +35,12 @@ public class JobScamChecksController(
         var application = await dbContext.JobApplications.AsNoTracking()
             .SingleOrDefaultAsync(item => item.Id == model.JobApplicationId!.Value && item.UserId == userId);
         if (application is null) return NotFound();
+        if (!await quotas.CanCreateScamCheckAsync(userId, HttpContext.RequestAborted))
+        {
+            TempData["ErrorMessage"] =
+                "Your workspace reached its saved job-post review limit.";
+            return RedirectToAction("Details", "JobApplications", new { id = application.Id });
+        }
 
         var result = detectorService.AnalyzeJob(application);
         var check = new JobScamCheck
@@ -42,8 +55,28 @@ public class JobScamChecksController(
             Recommendation = result.Recommendation,
             CreatedAt = DateTimeOffset.UtcNow
         };
-        dbContext.JobScamChecks.Add(check);
-        await dbContext.SaveChangesAsync();
+        var saved = await quotaGate.RunAsync(
+            WorkspaceQuotaResources.ScamChecks,
+            userId,
+            async cancellationToken =>
+            {
+                if (!await quotas.CanCreateScamCheckAsync(userId, cancellationToken))
+                {
+                    return false;
+                }
+
+                dbContext.JobScamChecks.Add(check);
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return true;
+            },
+            HttpContext.RequestAborted);
+        if (!saved)
+        {
+            TempData["ErrorMessage"] =
+                "Your workspace reached its saved job-post review limit.";
+            return RedirectToAction("Details", "JobApplications", new { id = application.Id });
+        }
+
         await events.RecordAsync(
             ProductEventNames.ScamCheckCompleted,
             "job_application",
@@ -63,17 +96,29 @@ public class JobScamChecksController(
     }
 
     [HttpGet("history")]
-    public async Task<IActionResult> History()
+    public async Task<IActionResult> History(int page = 1)
     {
         var userId = GetUserId();
+        var totalCount = await dbContext.JobScamChecks
+            .CountAsync(check => check.UserId == userId, HttpContext.RequestAborted);
+        var totalPages = Math.Max(1, (int)Math.Ceiling(totalCount / (double)HistoryPageSize));
+        var currentPage = Math.Clamp(page, 1, totalPages);
         var checks = await dbContext.JobScamChecks.AsNoTracking()
             .Where(check => check.UserId == userId)
             .OrderByDescending(check => check.CreatedAt)
+            .Skip((currentPage - 1) * HistoryPageSize)
+            .Take(HistoryPageSize)
             .Select(check => new JobScamCheckHistoryItemViewModel(
                 check.Id, check.JobApplication!.CompanyName, check.JobApplication.JobTitle,
                 check.RiskScore, check.RiskLevel, check.QualityScore, check.CreatedAt))
-            .ToListAsync();
-        return View(new JobScamCheckHistoryViewModel { Checks = checks });
+            .ToListAsync(HttpContext.RequestAborted);
+        return View(new JobScamCheckHistoryViewModel
+        {
+            Checks = checks,
+            Page = currentPage,
+            TotalPages = totalPages,
+            TotalCount = totalCount
+        });
     }
 
     private string GetUserId() => userManager.GetUserId(User)

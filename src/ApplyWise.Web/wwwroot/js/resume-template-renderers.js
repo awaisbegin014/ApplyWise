@@ -2,7 +2,7 @@
  * ApplyWise fidelity-locked resume templates.
  *
  * This module owns the metadata, fixed section maps, and deterministic
- * document-definition builders for the six ApplyWise-original designs.
+ * document-definition builders for the ApplyWise-original designs.
  * The resume-builder module supplies its shared PDF primitives so the public
  * ApplyWiseResumeBuilder API remains backwards compatible.
  */
@@ -81,6 +81,21 @@
             contentBudget: 'Best with detailed education, 2-3 roles, and a short skills list.'
         }),
         Object.freeze({
+            id: 'classic-latex',
+            name: 'Classic LaTeX',
+            font: 'CMU Serif',
+            description: 'A faithful Computer Modern single-column resume with compact rules and academic typography.',
+            accent: '#111111',
+            layout: 'classic-latex-letter',
+            hasPhoto: false,
+            photoRequired: false,
+            locked: true,
+            classification: 'ATS-optimized',
+            requiresSkillLevels: false,
+            requiresLanguageLevels: false,
+            contentBudget: 'Best with a two-line summary, 2 education entries, 3 roles, 3 projects, and 3 honors.'
+        }),
+        Object.freeze({
             id: 'graphite-impact',
             name: 'Graphite Impact',
             font: 'Poppins',
@@ -134,6 +149,7 @@
         'monochrome-timeline': Object.freeze(['professionalSummary', 'experience', 'education', 'projects', 'achievementsAndCertifications', 'volunteerExperience', 'skills', 'languages', 'references', 'interests', 'customSections']),
         'mint-horizon': Object.freeze(['professionalSummary', 'experience', 'projects', 'education', 'achievementsAndCertifications', 'volunteerExperience', 'references', 'skills', 'languages', 'interests', 'customSections']),
         'amber-academic': Object.freeze(['professionalSummary', 'experience', 'education', 'projects', 'achievementsAndCertifications', 'volunteerExperience', 'customSections', 'skills', 'languages', 'references', 'interests']),
+        'classic-latex': Object.freeze(['professionalSummary', 'education', 'skills', 'experience', 'projects', 'achievementsAndCertifications', 'volunteerExperience', 'languages', 'references', 'interests', 'customSections']),
         'graphite-impact': Object.freeze(['professionalSummary', 'experience', 'projects', 'education', 'volunteerExperience', 'achievementsAndCertifications', 'customSections', 'skills', 'references', 'languages', 'interests']),
         'midnight-executive': Object.freeze(['professionalSummary', 'skills', 'experience', 'projects', 'education', 'achievementsAndCertifications', 'volunteerExperience', 'languages', 'references', 'interests', 'customSections'])
     });
@@ -162,6 +178,12 @@
             textColor: '#363636', mutedColor: '#6f6f6f', accent: '#d89a4c', nameColor: '#d18b38', nameSize: 22,
             titleSize: 8, headingSize: 9, nameSpacing: 0.15, headingSpacing: 0.3, headingType: 'compact',
             sectionTitles: Object.freeze({ professionalSummary: 'Profile', experience: 'Employment History', skills: 'Skills', achievementsAndCertifications: 'Achievements & Certifications' })
+        }),
+        'classic-latex': Object.freeze({
+            id: 'classic-latex', font: 'CMU Serif', pageMargins: [32.4, 14.5, 32.4, 22], fontSize: 8.97, lineHeight: 1.08,
+            textColor: '#111111', mutedColor: '#111111', accent: '#111111', nameColor: '#111111', nameSize: 24.8,
+            titleSize: 8.97, headingSize: 11.96, nameSpacing: 0, headingSpacing: 0, headingType: 'rule',
+            sectionTitles: Object.freeze({ professionalSummary: 'Summary', experience: 'Experience', skills: 'Technical Skills', achievementsAndCertifications: 'Honors and Awards' })
         }),
         'graphite-impact': Object.freeze({
             id: 'graphite-impact', font: 'Poppins', pageMargins: [17, 17, 17, 17], fontSize: 6.75, lineHeight: 1.01,
@@ -414,6 +436,231 @@
         ]);
     }
 
+    function classicSmallCaps(value, largeSize, smallSize) {
+        return [{
+            text: String(value || ''),
+            fontSize: largeSize,
+            fontFeatures: ['smcp'],
+            characterSpacing: smallSize < largeSize ? 0.06 : 0
+        }];
+    }
+
+    function classicHeading(title) {
+        return {
+            stack: [
+                { text: classicSmallCaps(title, 11.96, 9.35), lineHeight: 1, margin: [0, 0, 0, 1.25] },
+                { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 547.2, y2: 0, lineWidth: 0.45, lineColor: '#111111' }] }
+            ],
+            margin: [0, 7.2, 0, 3.4]
+        };
+    }
+
+    function classicYear(value) {
+        const match = /^(\d{4})/.exec(String(value || ''));
+        return match ? match[1] : '';
+    }
+
+    function classicMonth(value) {
+        const match = /^(\d{4})-(\d{2})$/.exec(String(value || ''));
+        if (!match) return classicYear(value);
+        const months = ['Jan', 'Feb', 'March', 'April', 'May', 'June', 'July', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
+        const month = months[Number(match[2]) - 1];
+        return month ? month + ' ' + match[1] : match[1];
+    }
+
+    function classicRange(entry, currentKey, yearsOnly) {
+        const formatter = yearsOnly ? classicYear : classicMonth;
+        const start = formatter(entry.startDate);
+        const end = entry[currentKey] ? 'Present' : formatter(entry.endDate);
+        return [start, end].filter(Boolean).join(' - ');
+    }
+
+    function classicHeadingRow(left, right, indent) {
+        const columns = [{ width: '*', text: left || '' }];
+        if (right) columns.push({ width: 'auto', text: right, alignment: 'right', noWrap: true });
+        return { columns: columns, columnGap: 8, margin: [indent || 10.8, 0, 10.8, 0] };
+    }
+
+    function classicBullets(values, tools) {
+        const nodes = (values || []).filter(Boolean).map(function (value) {
+            return {
+                columns: [
+                    { width: 10, text: '-', alignment: 'right' },
+                    tools.pdfRichText(value, { width: '*' })
+                ],
+                columnGap: 5,
+                margin: [12, 0, 0, 0]
+            };
+        });
+        return nodes.length ? { stack: nodes, margin: [0, 0.2, 0, 0.7] } : null;
+    }
+
+    function classicContactLine(personal, tools) {
+        const runs = [];
+        function add(value) {
+            if (!value) return;
+            if (runs.length) runs.push({ text: ' | ', color: '#111111' });
+            runs.push(value);
+        }
+        add({ text: personal.phoneNumber || '' });
+        add({ text: personal.location || '' });
+        add({ text: personal.emailAddress || '' });
+        [
+            ['Portfolio', personal.portfolioUrl],
+            ['LinkedIn', personal.linkedInUrl],
+            ['GitHub', personal.gitHubUrl]
+        ].forEach(function (entry) {
+            const safeUrl = tools.safeUrl(entry[1]);
+            if (safeUrl) add({ text: entry[0], link: safeUrl, color: '#0000EE', decoration: 'underline' });
+        });
+        return { text: runs, alignment: 'center', fontSize: 8.97, margin: [0, 0.8, 0, 0] };
+    }
+
+    function classicSummary(state, tools) {
+        if (!sectionVisible(state, 'professionalSummary') || !state.professionalSummary) return [];
+        const nodes = [classicHeading('Summary')];
+        state.professionalSummary.split(/\n\s*\n/).filter(Boolean).forEach(function (paragraph) {
+            nodes.push(tools.pdfRichText(paragraph, { margin: [0, 0, 0, 0.5] }));
+        });
+        return nodes;
+    }
+
+    function classicEducation(state, tools) {
+        if (!sectionVisible(state, 'education')) return [];
+        const entries = state.education.filter(function (entry) {
+            return Boolean(entry.institutionName || entry.degree || entry.fieldOfStudy || entry.grade || entry.descriptionOrCoursework);
+        });
+        if (!entries.length) return [];
+        const nodes = [classicHeading('Education')];
+        entries.forEach(function (entry) {
+            const degree = [entry.degree, entry.fieldOfStudy].filter(Boolean).join(' ');
+            const title = [degree, entry.institutionName].filter(Boolean).join(', ');
+            const stack = [classicHeadingRow([{ text: title, bold: true }], classicRange(entry, 'isCurrentlyStudying', true))];
+            if (entry.grade) stack.push(tools.pdfText(entry.grade, { margin: [10.8, 0, 10.8, 0] }));
+            if (entry.location) stack.push(tools.pdfText(entry.location, { margin: [10.8, 0, 10.8, 0] }));
+            if (entry.descriptionOrCoursework) stack.push(tools.pdfRichText(entry.descriptionOrCoursework, { margin: [10.8, 0, 10.8, 0] }));
+            nodes.push({ stack: stack, margin: [0, 0, 0, 0.8] });
+        });
+        return nodes;
+    }
+
+    function classicSkills(state) {
+        if (!sectionVisible(state, 'skills')) return [];
+        const entries = state.skills.map(function (category) {
+            const skills = (category.skills || []).filter(function (skill) { return Boolean(skill.name); });
+            return { name: category.name, skills: skills };
+        }).filter(function (category) { return Boolean(category.name || category.skills.length); });
+        if (!entries.length) return [];
+        const nodes = [classicHeading('Technical Skills')];
+        entries.forEach(function (category) {
+            const runs = [];
+            if (category.name) runs.push({ text: category.name + (category.skills.length ? ': ' : ''), bold: true });
+            if (category.skills.length) runs.push({ text: category.skills.map(function (skill) { return skill.name; }).join(', ') });
+            nodes.push({ text: runs, margin: [10.8, 0, 10.8, 0] });
+        });
+        return nodes;
+    }
+
+    function classicExperience(state, tools) {
+        if (!sectionVisible(state, 'experience')) return [];
+        const entries = state.experience.filter(function (entry) {
+            return Boolean(entry.companyName || entry.jobTitle || entry.location || entry.technologySkills || (entry.bulletPoints || []).some(Boolean));
+        });
+        if (!entries.length) return [];
+        const nodes = [classicHeading('Experience')];
+        entries.forEach(function (entry) {
+            const title = [entry.jobTitle, entry.companyName].filter(Boolean).join(', ');
+            const stack = [classicHeadingRow([{ text: title, bold: true }], classicRange(entry, 'isCurrentlyWorking', false))];
+            if (entry.location) stack.push(tools.pdfText(entry.location, { margin: [10.8, 0, 10.8, 0] }));
+            const bullets = classicBullets(entry.bulletPoints, tools);
+            if (bullets) stack.push(bullets);
+            if (entry.technologySkills) {
+                stack.push({
+                    text: [{ text: 'Technology/Skills: ' }, { text: entry.technologySkills }],
+                    margin: [10.8, 0, 10.8, 0]
+                });
+            }
+            nodes.push({ stack: stack, margin: [0, 0, 0, 1.2] });
+        });
+        return nodes;
+    }
+
+    function classicProjects(state, tools) {
+        if (!sectionVisible(state, 'projects')) return [];
+        const entries = state.projects.filter(function (entry) {
+            return Boolean(entry.projectName || entry.projectUrl || entry.repositoryUrl || (entry.technologiesUsed || []).length || (entry.bulletPoints || []).some(Boolean));
+        });
+        if (!entries.length) return [];
+        const nodes = [classicHeading('Projects')];
+        entries.forEach(function (entry) {
+            const technologies = (entry.technologiesUsed || []).filter(Boolean).join(', ');
+            const title = [];
+            if (entry.projectName) title.push({ text: entry.projectName, bold: true });
+            if (technologies) title.push({ text: (entry.projectName ? ' | ' : '') + technologies, italics: true });
+            const stack = [{ text: title, margin: [10.8, 0, 10.8, 0] }];
+            const bullets = classicBullets(entry.bulletPoints, tools);
+            if (bullets) stack.push(bullets);
+            const links = [];
+            const liveUrl = tools.safeUrl(entry.projectUrl);
+            const repositoryUrl = tools.safeUrl(entry.repositoryUrl);
+            if (liveUrl) links.push({ text: 'Live', link: liveUrl, color: '#0000EE', decoration: 'underline' });
+            if (repositoryUrl) links.push({ text: 'GitHub', link: repositoryUrl, color: '#0000EE', decoration: 'underline' });
+            if (links.length) {
+                const line = [{ text: 'Link: ', bold: true }];
+                links.forEach(function (link, index) {
+                    if (index) line.push({ text: ' | ' });
+                    line.push(link);
+                });
+                stack.push({ text: line, margin: [28, 0, 10.8, 0] });
+            }
+            nodes.push({ stack: stack, margin: [0, 0, 0, 1.9] });
+        });
+        return nodes;
+    }
+
+    function classicHonors(state, tools) {
+        if (!sectionVisible(state, 'achievementsAndCertifications')) return [];
+        const entries = state.achievementsAndCertifications.filter(function (entry) {
+            return Boolean(entry.title || entry.issuingOrganization || entry.description);
+        });
+        if (!entries.length) return [];
+        const nodes = [classicHeading('Honors and Awards')];
+        entries.forEach(function (entry) {
+            const line = [];
+            if (entry.title) line.push({ text: entry.title, bold: true });
+            if (entry.issuingOrganization) line.push({ text: (entry.title ? ' - ' : '') + entry.issuingOrganization });
+            nodes.push({ text: line, margin: [10.8, 0, 10.8, 0] });
+            if (entry.description) nodes.push(tools.pdfRichText(entry.description, { margin: [10.8, 0, 10.8, 0] }));
+        });
+        return nodes;
+    }
+
+    function buildClassicLatex(state, profile, tools) {
+        const personal = state.personalInformation;
+        const content = [];
+        if (personal.fullName) {
+            content.push({
+                text: classicSmallCaps(personal.fullName, 24.8, 18.6),
+                alignment: 'center',
+                lineHeight: 1,
+                margin: [0, 0, 0, 0]
+            });
+        }
+        content.push(classicContactLine(personal, tools));
+        Array.prototype.push.apply(content, classicSummary(state, tools));
+        Array.prototype.push.apply(content, classicEducation(state, tools));
+        Array.prototype.push.apply(content, classicSkills(state));
+        Array.prototype.push.apply(content, classicExperience(state, tools));
+        Array.prototype.push.apply(content, classicProjects(state, tools));
+        Array.prototype.push.apply(content, classicHonors(state, tools));
+        Array.prototype.push.apply(content, tools.remainingSectionContent(state, profile, [
+            'professionalSummary', 'education', 'skills', 'experience', 'projects', 'achievementsAndCertifications'
+        ]));
+        const definition = tools.createDefinition(state, profile, content);
+        definition.pageSize = 'LETTER';
+        return definition;
+    }
+
     function buildGraphite(state, profile, tools) {
         const personal = state.personalInformation;
         const mainProfile = tools.templateProfile(profile, { accent: '#242424', headingType: 'bar', headingSize: 7.7 });
@@ -496,6 +743,7 @@
             case 'monochrome-timeline': return buildMonochrome(state, profile, tools);
             case 'mint-horizon': return buildMint(state, profile, tools);
             case 'amber-academic': return buildAmber(state, profile, tools);
+            case 'classic-latex': return buildClassicLatex(state, profile, tools);
             case 'graphite-impact': return buildGraphite(state, profile, tools);
             case 'midnight-executive': return buildMidnight(state, profile, tools);
             default: return null;

@@ -1,4 +1,3 @@
-using System.Data;
 using System.Text.Json;
 using ApplyWise.Web.Data;
 using ApplyWise.Web.Models;
@@ -6,6 +5,7 @@ using ApplyWise.Web.Services.ResumeAnalysis;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using ApplyWise.Web.Services.Monitoring;
+using ApplyWise.Web.Services.Security;
 
 namespace ApplyWise.Web.Services.ResumeStorage;
 
@@ -16,7 +16,8 @@ public sealed class ResumeIngestionService(
     IResumeFileCleanupScheduler cleanupScheduler,
     IProductEventRecorder events,
     IOptions<ResumeStorageOptions> storageOptions,
-    ILogger<ResumeIngestionService> logger) : IResumeIngestionService
+    ILogger<ResumeIngestionService> logger,
+    IWorkspaceQuotaGate quotaGate) : IResumeIngestionService
 {
     private static readonly byte[] PdfSignature = "%PDF-"u8.ToArray();
     private static readonly byte[] ZipSignature = [0x50, 0x4B];
@@ -108,37 +109,49 @@ public sealed class ResumeIngestionService(
                 : JsonSerializer.Serialize(inspection.Diagnostics, new JsonSerializerOptions(JsonSerializerDefaults.Web))
         };
 
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(
-            IsolationLevel.Serializable,
-            cancellationToken);
         try
         {
-            var currentUsage = await GetUsageAsync(request.UserId, cancellationToken);
-            if (ExceedsStorageLimit(currentUsage.Count, currentUsage.Bytes, resume.FileSize, limits))
+            var saved = await quotaGate.RunAsync(
+                WorkspaceQuotaResources.Resumes,
+                request.UserId,
+                async operationCancellationToken =>
+                {
+                    var currentUsage = await GetUsageAsync(
+                        request.UserId,
+                        operationCancellationToken);
+                    if (ExceedsStorageLimit(
+                            currentUsage.Count,
+                            currentUsage.Bytes,
+                            resume.FileSize,
+                            limits))
+                    {
+                        return false;
+                    }
+
+                    if (resume.IsDefault)
+                    {
+                        await dbContext.Resumes
+                            .Where(item => item.UserId == request.UserId && item.IsDefault)
+                            .ExecuteUpdateAsync(
+                                setters => setters.SetProperty(item => item.IsDefault, false),
+                                operationCancellationToken);
+                    }
+
+                    dbContext.Resumes.Add(resume);
+                    await dbContext.SaveChangesAsync(operationCancellationToken);
+                    return true;
+                },
+                cancellationToken);
+            if (!saved)
             {
-                await transaction.RollbackAsync(cancellationToken);
                 await DeleteOrScheduleAsync(relativePath, absolutePath, CancellationToken.None);
                 return ResumeIngestionResult.Failed(
                     ["Your resume library reached its storage limit while this upload was being prepared."],
                     inspection);
             }
-
-            if (resume.IsDefault)
-            {
-                await dbContext.Resumes
-                    .Where(item => item.UserId == request.UserId && item.IsDefault)
-                    .ExecuteUpdateAsync(
-                        setters => setters.SetProperty(item => item.IsDefault, false),
-                        cancellationToken);
-            }
-
-            dbContext.Resumes.Add(resume);
-            await dbContext.SaveChangesAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
         }
         catch (Exception exception)
         {
-            await transaction.RollbackAsync(CancellationToken.None);
             await DeleteOrScheduleAsync(relativePath, absolutePath, CancellationToken.None);
             System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception).Throw();
             throw;

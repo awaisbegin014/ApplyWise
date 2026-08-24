@@ -1,5 +1,7 @@
 @page
 @model ApplyWise.Web.Areas.Identity.Pages.Account.RegisterModel
+@using ApplyWise.Web.Services.AccountSecurity
+@inject Microsoft.Extensions.Options.IOptions<ApplyWise.Web.Services.Security.HumanChallengeOptions> HumanChallengeOptions
 @{
     ViewData["Title"] = "Create account";
 }
@@ -45,32 +47,6 @@
                 <span asp-validation-for="Input.FullName" class="field-validation-error"></span>
             </label>
 
-            <div class="aw-register-demographics">
-                <label class="aw-login-field" asp-for="Input.Gender">
-                    <span>Gender</span>
-                    <span class="aw-login-input aw-login-select">
-                        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></svg>
-                        <select asp-for="Input.Gender">
-                            <option value="">Choose gender</option>
-                            <option value="Woman">Woman</option>
-                            <option value="Man">Man</option>
-                            <option value="NonBinary">Non-binary</option>
-                            <option value="PreferNotToSay">Prefer not to say</option>
-                        </select>
-                    </span>
-                    <span asp-validation-for="Input.Gender" class="field-validation-error"></span>
-                </label>
-
-                <label class="aw-login-field" asp-for="Input.DateOfBirth">
-                    <span>Date of birth</span>
-                    <span class="aw-login-input">
-                        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M8 3v4M16 3v4M3 10h18" /></svg>
-                        <input asp-for="Input.DateOfBirth" type="date" autocomplete="bday" max="@DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd")" />
-                    </span>
-                    <span asp-validation-for="Input.DateOfBirth" class="field-validation-error"></span>
-                </label>
-            </div>
-
             <label class="aw-login-field" asp-for="Input.Email">
                 <span>Email address</span>
                 <span class="aw-login-input">
@@ -87,7 +63,7 @@
                     <input asp-for="Input.Password" autocomplete="new-password" placeholder="Create a secure password" aria-describedby="password-requirements" />
                     <partial name="_PasswordToggle" model='"Input_Password"' />
                 </span>
-                <small id="password-requirements" class="aw-password-help">Use at least 6 characters and include one number.</small>
+                <small id="password-requirements" class="aw-password-help">@PasswordRequirements.UserFacingSummary</small>
                 <span asp-validation-for="Input.Password" class="field-validation-error"></span>
             </div>
 
@@ -101,6 +77,8 @@
                 <span asp-validation-for="Input.ConfirmPassword" class="field-validation-error"></span>
             </div>
 
+            <partial name="~/Views/Shared/_HumanChallenge.cshtml" model='@ApplyWise.Web.Services.Security.HumanChallengeActions.Register' />
+
             <button id="registerSubmit" type="submit" class="btn btn-primary btn-lg aw-login-submit">Create account <svg class="ui-icon"><use href="#i-arrow" /></svg></button>
             <a class="btn btn-secondary-soft aw-create-account" asp-page="./Login" asp-route-returnUrl="@Model.ReturnUrl">Back to log in</a>
         </form>
@@ -110,7 +88,6 @@
         <div class="aw-auth-quote">
             <span class="aw-auth-kicker">Start tracking with Wiso</span>
             <blockquote>Your next opportunity, always in view.</blockquote>
-            <p>Track every opportunity, choose or build the right resume, and keep your next move clear.</p>
         </div>
         <div class="aw-auth-avatar-wrap">
             <span>Let's begin!</span>
@@ -121,4 +98,8 @@
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
+    @if (HumanChallengeOptions.Value.Enabled)
+    {
+        <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+    }
 }

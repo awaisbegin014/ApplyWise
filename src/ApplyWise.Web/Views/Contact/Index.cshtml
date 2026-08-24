@@ -1,0 +1,112 @@
+@using ApplyWise.Web.Models
+@model ApplyWise.Web.ViewModels.Contact.ContactFormViewModel
+@inject Microsoft.Extensions.Options.IOptions<ApplyWise.Web.Services.Security.HumanChallengeOptions> HumanChallengeOptions
+@{
+    ViewData["Title"] = "Contact us";
+    ViewData["MetaDescription"] = "Contact ApplyWise about product questions, account access, technical support, privacy requests, or feedback.";
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/home.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/contact.css" asp-append-version="true" />
+}
+
+<main id="main-content" class="aw-home aw-contact-page" role="main">
+    <section class="aw-contact-hero" aria-labelledby="contact-title">
+        <div class="aw-home-container aw-contact-grid">
+            <div class="aw-contact-copy">
+                <span class="aw-home-kicker aw-contact-kicker">Contact us</span>
+                <h1 id="contact-title">Tell us what you need help with.</h1>
+                <p>Share enough context for us to understand the question. Your message goes directly into the private ApplyWise owner inbox.</p>
+
+                <div class="aw-contact-expectations" aria-label="What happens after you send a message">
+                    <div><span aria-hidden="true">1</span><p><strong>You describe the issue</strong><small>Choose a topic and explain what happened or what you need.</small></p></div>
+                    <div><span aria-hidden="true">2</span><p><strong>The owner reviews it</strong><small>Your details and message appear in the protected owner console.</small></p></div>
+                    <div><span aria-hidden="true">3</span><p><strong>We reply by email</strong><small>Keep the email address accurate so a response can reach you.</small></p></div>
+                </div>
+            </div>
+
+            <form class="aw-contact-form" asp-controller="Contact" asp-action="Index" method="post">
+                <header>
+                    <span class="aw-contact-form-label">Message details</span>
+                    <h2>How can we help?</h2>
+                    <p>Fields marked with <span aria-hidden="true">*</span><span class="visually-hidden">an asterisk</span> are required.</p>
+                </header>
+
+                <div asp-validation-summary="ModelOnly" class="aw-contact-validation-summary" role="alert"></div>
+
+                <div class="aw-contact-field-grid">
+                    <div class="aw-contact-field">
+                        <label asp-for="FullName">Your name <span class="aw-required-marker" aria-hidden="true">*</span></label>
+                        <input asp-for="FullName" class="form-control" autocomplete="name" maxlength="100" required aria-required="true" />
+                        <span asp-validation-for="FullName" class="text-danger"></span>
+                    </div>
+                    <div class="aw-contact-field">
+                        <label asp-for="Email">Email address <span class="aw-required-marker" aria-hidden="true">*</span></label>
+                        <input asp-for="Email" class="form-control" autocomplete="email" inputmode="email" maxlength="320" required aria-required="true" />
+                        <span asp-validation-for="Email" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="aw-contact-field">
+                    <label asp-for="Topic">What can we help with? <span class="aw-required-marker" aria-hidden="true">*</span></label>
+                    <select asp-for="Topic" asp-items="Html.GetEnumSelectList<ContactTopic>()" class="form-select" required aria-required="true">
+                        <option value="">Choose a topic</option>
+                    </select>
+                    <span asp-validation-for="Topic" class="text-danger"></span>
+                </div>
+
+                <div class="aw-contact-field">
+                    <label asp-for="Subject">Subject <span class="aw-required-marker" aria-hidden="true">*</span></label>
+                    <input asp-for="Subject" class="form-control" maxlength="160" placeholder="A short summary of your question" required aria-required="true" />
+                    <span asp-validation-for="Subject" class="text-danger"></span>
+                </div>
+
+                <div class="aw-contact-field">
+                    <label asp-for="Message">How can we help? <span class="aw-required-marker" aria-hidden="true">*</span></label>
+                    <textarea asp-for="Message" class="form-control" rows="7" maxlength="4000" placeholder="Include the page involved, what you expected, and what happened." required aria-required="true"></textarea>
+                    <div class="aw-contact-field-help"><span>Minimum 10 characters</span><span>Maximum 4,000</span></div>
+                    <span asp-validation-for="Message" class="text-danger"></span>
+                </div>
+
+                <div class="aw-contact-honeypot" aria-hidden="true">
+                    <label asp-for="Website">Leave this field empty</label>
+                    <input asp-for="Website" tabindex="-1" autocomplete="off" />
+                </div>
+
+                <p class="aw-contact-safety"><strong>Keep secrets out of your message.</strong> Never send passwords, authentication codes, payment details, or full resume contents.</p>
+                @if (User.Identity?.IsAuthenticated != true)
+                {
+                    <partial name="~/Views/Shared/_HumanChallenge.cshtml" model='@ApplyWise.Web.Services.Security.HumanChallengeActions.Contact' />
+                }
+                <button class="btn btn-primary btn-lg" type="submit">Send message</button>
+                <p class="aw-contact-privacy">By sending this form, you agree that ApplyWise may use these details to answer your request. See the <a asp-controller="Home" asp-action="Privacy">privacy policy</a>.</p>
+            </form>
+        </div>
+    </section>
+
+    <section class="aw-contact-guidance" aria-labelledby="contact-guidance-title">
+        <div class="aw-home-container">
+            <header class="aw-contact-guidance-heading">
+                <span class="aw-home-kicker">Helpful context</span>
+                <h2 id="contact-guidance-title">What to include in your message</h2>
+            </header>
+            <div class="aw-contact-guidance-grid">
+                <article><span>Account</span><h3>Account access</h3><p>Include the account email and the step that failed. Never include a password or verification code.</p></article>
+                <article><span>Technical</span><h3>Something is not working</h3><p>Tell us the page, browser, expected result, actual result, and approximate time of the issue.</p></article>
+                <article><span>Privacy</span><h3>Privacy or data request</h3><p>Explain whether you need access, correction, deletion help, or information about how data is handled.</p></article>
+            </div>
+        </div>
+    </section>
+</main>
+
+<partial name="~/Views/Home/_MarketingFooter.cshtml" />
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script src="~/js/home.js" asp-append-version="true"></script>
+    @if (User.Identity?.IsAuthenticated != true && HumanChallengeOptions.Value.Enabled)
+    {
+        <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+    }
+}

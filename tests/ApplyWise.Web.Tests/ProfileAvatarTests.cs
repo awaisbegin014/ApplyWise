@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -20,6 +21,20 @@ namespace ApplyWise.Web.Tests;
 
 public sealed class ProfileAvatarTests
 {
+    [Fact]
+    public void Avatar_upload_has_per_user_rate_and_request_size_limits()
+    {
+        var action = typeof(ProfileController).GetMethod(
+            nameof(ProfileController.Avatar),
+            [typeof(IFormFile)]);
+
+        Assert.NotNull(action);
+        var limiter = Assert.IsType<EnableRateLimitingAttribute>(
+            Assert.Single(action!.GetCustomAttributes(typeof(EnableRateLimitingAttribute), true)));
+        Assert.Equal("uploads", limiter.PolicyName);
+        Assert.Single(action.GetCustomAttributes(typeof(RequestSizeLimitAttribute), true));
+    }
+
     [Fact]
     public async Task Selecting_a_built_in_avatar_persists_its_id_and_serves_its_file()
     {
@@ -58,7 +73,8 @@ public sealed class ProfileAvatarTests
         var pngBytes = new byte[]
         {
             0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
-            0x00, 0x00, 0x00, 0x00
+            0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+            0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00
         };
 
         try
@@ -116,13 +132,26 @@ public sealed class ProfileAvatarTests
             Assert.IsType<RedirectToActionResult>(result);
             Assert.Empty(await scope.Db.CareerProfiles.ToListAsync());
             Assert.Equal(
-                "That file is not a valid PNG, JPEG, or WebP picture.",
+                "Choose a valid PNG, JPEG, or WebP picture no larger than 4,096 pixels per side.",
                 scope.Controller.TempData["ErrorMessage"]);
         }
         finally
         {
             Directory.Delete(webRoot, recursive: true);
         }
+    }
+
+    [Fact]
+    public void Image_inspection_rejects_decompression_bomb_dimensions()
+    {
+        byte[] pngHeader =
+        [
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+            0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+            0x00, 0x00, 0x27, 0x10, 0x00, 0x00, 0x27, 0x10
+        ];
+
+        Assert.Null(AvatarImageInspector.Inspect(pngHeader));
     }
 
     private static async Task<ControllerScope> CreateControllerAsync(string webRoot)

@@ -1,13 +1,13 @@
 @model ApplyWise.Web.ViewModels.Interviews.InterviewIndexViewModel
 @{ ViewData["Title"] = "Interviews"; }
 
-<div class="page-heading"><div><h1>Interviews</h1><p>Keep track of interview schedules, preparation notes, and outcomes.</p></div><a class="btn btn-primary" asp-action="Create"><svg class="ui-icon"><use href="#i-plus" /></svg>Add Interview</a></div>
+<div class="page-heading"><div><h1>Interviews</h1><p>Keep track of interview schedules, preparation notes, and outcomes.</p></div><a class="btn btn-primary" asp-action="Create"><svg class="ui-icon"><use href="#i-plus" /></svg>Add interview</a></div>
 @if (TempData["SuccessMessage"] is string successMessage) { <div class="alert app-alert" role="status">@successMessage</div> }
 <nav class="filter-tabs" aria-label="Interview filters"><a class="@(Model.Filter == "upcoming" ? "active" : null)" aria-current="@(Model.Filter == "upcoming" ? "page" : null)" asp-action="Index" asp-route-filter="upcoming">Upcoming</a><a class="@(Model.Filter == "past" ? "active" : null)" aria-current="@(Model.Filter == "past" ? "page" : null)" asp-action="Index" asp-route-filter="past">Past</a><a class="@(Model.Filter == "all" ? "active" : null)" aria-current="@(Model.Filter == "all" ? "page" : null)" asp-action="Index" asp-route-filter="all">All</a></nav>
 
 @if (Model.Interviews.Count == 0)
 {
-    <section class="panel empty-state"><span class="empty-icon" aria-hidden="true"><svg class="ui-icon"><use href="#i-calendar" /></svg></span><h2>@EmptyTitle()</h2><p>@(Model.Filter == "upcoming" ? "Schedule an interview to keep preparation and timing in one place." : "No interviews match this view yet.")</p>@if (Model.Filter == "upcoming") { <a class="btn btn-primary" asp-action="Create"><svg class="ui-icon"><use href="#i-plus" /></svg>Add Interview</a> }</section>
+    <section class="panel empty-state"><span class="empty-icon" aria-hidden="true"><svg class="ui-icon"><use href="#i-calendar" /></svg></span><h2>@EmptyTitle()</h2><p>@(Model.Filter == "upcoming" ? "Schedule an interview to keep preparation and timing in one place." : "No interviews match this view yet.")</p>@if (Model.Filter == "upcoming") { <a class="btn btn-primary" asp-action="Create"><svg class="ui-icon"><use href="#i-plus" /></svg>Add interview</a> }</section>
 }
 else
 {
