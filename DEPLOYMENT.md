@@ -1,66 +1,63 @@
-# ApplyWise deployment notes
+# ApplyWise release and operations notes
 
-ApplyWise is one ASP.NET Core MVC application backed by SQL Server. The container files are a starting point for a controlled deployment; they do not create production data or seed fake listings.
+ApplyWise is one ASP.NET Core MVC application backed by SQL Server and private persistent file storage. The checked-in Docker Compose stack is for local integration only; it deliberately uses the SQL Server Developer edition and its `sa` account inside a private development network. It is not a production topology.
+
+## Production prerequisites
 
 Before a production rollout:
 
-1. Set `ConnectionStrings__DefaultConnection` to a least-privilege SQL login, `PublicOrigin` to the canonical HTTPS origin, and `AllowedHosts` to the exact host names served by the reverse proxy. Production startup rejects `sa`, missing placeholders, wildcard hosts, and a non-HTTPS public origin. The application enforces encrypted SQL transport and certificate validation even when a hosting profile defaults to weaker client flags. If a private-CA host cannot provide a trusted root, `Database__AllowUntrustedServerCertificate=true` is an explicit host-level exception; never enable it for a publicly reachable database endpoint.
-2. Configure SMTP (`Email__Host`, `Email__Port`, `Email__UserName`, `Email__Password`, `Email__From`). Production requires confirmed email; the app intentionally fails an email send rather than silently claiming an account was verified.
-3. On MonsterASP.NET, set absolute paths below the site's sibling `Private` directory for `ResumeStorage__RootPath`, `DataProtection__KeysPath`, and `DataProtection__CertificatePath`. Upload the encrypted PFX through Monster WebFTP and set `DataProtection__CertificatePassword`; ApplyWise encrypts the persisted key ring with that certificate. Persist and back up the key directory so authentication cookies and reset tokens remain valid. Enable Monster's HTTPS certificate before launch.
-4. Mount private resume storage with restricted permissions. Keep it outside static web roots, back it up, set retention, and add malware scanning/CDR before accepting public uploads.
-5. Run `dotnet ef database update` from a release artifact or apply the reviewed idempotent script. For hosts that keep the production connection string in a platform-only environment store, `Database__ApplyMigrationsOnStartup=true` may be enabled for one controlled restart and must be removed immediately after the migration succeeds. The web app never applies migrations at startup unless this explicit switch is enabled. The profile/opportunity migrations use conditional additive SQL so an earlier portal schema is reused without dropping rows.
-6. Set `ResumeStorage__MaxFilesPerUser`, `ResumeStorage__MaxBytesPerUser`, and rate limits from observed traffic. Review health (`/health`), structured logs, rejected uploads, parser timeouts, and orphan cleanup alerts.
+1. Set a least-privilege `ConnectionStrings__DefaultConnection`, canonical HTTPS `PublicOrigin`, exact `AllowedHosts`, and the exact trusted proxy IPs under `ForwardedHeaders__KnownProxies`. Production rejects `sa`, placeholders, wildcard hosts, missing proxies, relative private paths, and unconfirmed-account mode. SQL encryption and certificate-chain validation are mandatory; there is no certificate-validation bypass.
+2. Create a Cloudflare Turnstile widget restricted to the exact public hostname. Store `HumanChallenge__SiteKey` and `HumanChallenge__SecretKey` in the host secret store, set `HumanChallenge__ExpectedHostname` to that hostname, and keep `HumanChallenge__Enabled=true`. Production refuses to start without this server-validated bot protection.
+3. Configure SMTP and verify delivery for confirmation, recovery, and sensitive-action codes. Never treat an accepted SMTP request as proof of inbox delivery.
+4. Put resumes, Data Protection keys, and the Data Protection certificate below a private persistent host directory, never `wwwroot`. Back up the encrypted key ring and restrict filesystem access to the application identity.
+5. Provision every owner with the offline `--provision-owner` command in [docs/OPERATIONS.md](docs/OPERATIONS.md). Public registration rejects configured owner addresses. Audit any pre-existing row before using the explicit completion flag; the command verifies TOTP and produces recovery codes without exposing a web bootstrap route.
+6. Finish Google OAuth verification and any restricted-scope security assessment before enabling Gmail imports for public users. Keep the feature disabled until this external approval is complete.
+7. Implement and record the monitors, alert routing, coordinated backups, retention, monthly restore rehearsal, and RPO/RTO evidence defined in [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
-The application also enforces per-user limits for applications, interviews, analyses, and Gmail imports under `WorkspaceQuotas`. Raise these only after checking database size, query latency, and abuse monitoring. `/health` performs a database readiness probe and has a dedicated low-volume limiter; keep it behind the platform health probe or trusted reverse proxy when possible.
+## Immutable release process
 
-The production owner allowlist is preconfigured with `awaisshaikhcs786@gmail.com`. A host-level `AdminAccess__Emails__0` value overrides it. Production also sets `AdminAccess__RequireMfa=true`: after the owner account is registered and confirmed, open **Settings → Set up MFA**, complete authenticator enrollment, then sign out and sign back in with the authenticator before using `/admin`. The policy requires second-factor evidence from the current sign-in session, not merely an enrolled account. There is no shared or default administrator password.
+The supported hosted path is documented in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). Every production release follows this order:
 
-Google integration is disabled by default in Production. To enable it, supply both `Google__ClientId` and `Google__ClientSecret` through the host secret store and register the production `/signin-google` and `/signin-google-gmail` callback URLs. Never deploy the development Google secret; rotate any value that has been displayed in a terminal or screenshot.
+1. Merge to `master` and wait for **Validate release** to succeed.
+2. Record that workflow run ID and choose an earlier successful run carrying the same `2026-08-release-hardening-v2` security baseline as the rollback artifact. Pull-request, unreachable, pre-hardening, and schema-unbound artifacts are deliberately rejected. In normal mode, the workflow also requires production's current `/health/release` SHA, environment, baseline, and terminal migration to match that rollback artifact before it changes anything.
+3. Take and verify a recoverable database backup.
+4. Download `migrations.sql` from the exact successful release artifact, verify its SHA-256 and terminal migration against `release-manifest.json`, and review it. Automatic binary rollback is safe only when the schema remains compatible with both release and rollback binaries and every data invalidation is understood. This release deliberately invalidates outstanding six-digit security codes; users can request new codes. Apply the script before binary deployment with a temporary schema-migration identity; the application identity must not receive schema permissions. Never update Production from an arbitrary checkout.
+5. Start **Deploy tested ApplyWise release** with the exact release run ID, rollback run ID, website name, canonical origin, backup reference, and all three confirmation switches. A declined confirmation fails the workflow visibly.
+6. The workflow deploys the already-tested artifact; it does not rebuild mutable source. It then requires `/health/ready`, `/health/release`, and `/contact` to verify. A failed or partial Web Deploy attempt automatically restores the selected binary artifact and verifies recovery.
+7. If the schema must be reversed, stop traffic and use the reviewed database recovery plan or backup. Do not improvise a destructive rollback while the site is serving requests.
 
-## Container deployment
+`/health/live` proves the process is responsive. `/health/ready` verifies database connectivity, that no compiled migration is pending, that private resume and Data Protection storage are writable, that protection can round-trip, and—in Production—that a confirmed, MFA-enabled allowlisted owner has the `Admin` role. `/health/release` reports the deployed source revision, runtime environment, security baseline, and terminal compiled migration. Monitoring should use readiness; container liveness uses the lighter live endpoint.
 
-The Docker Compose file is deliberately private-by-default: the web container listens on `127.0.0.1:8080`, and SQL Server is not published to the host. Put a TLS reverse proxy in front of the web listener rather than publishing either container directly.
+The one-time first deployment of this security baseline needs two distinct successful artifacts: an ancestor baseline artifact and the intended release artifact. Use the explicitly reviewed `bootstrap_first_hardened_release` switch only for that first rollout, provide the production change-ticket/approval reference, and keep the GitHub `production` environment approval enabled. Bootstrap mode still requires a healthy live site, two baseline-valid artifacts, an ancestor relationship, a verified backup, and all migration confirmations; it only waives the impossible pre-existing live-SHA match while the legacy site returns 404 for `/health/release`. The workflow rejects bootstrap once that endpoint exists.
+
+GitHub retains validation artifacts for 90 days. Refresh the exact live last-known-good commit at least every 60 days by dispatching **Validate release** from a protected tag/ref that resolves to that SHA and remains reachable from `master`, then record the new successful run ID. This keeps an immutable rollback payload available during quiet release periods.
+
+## Local integration stack
+
+Copy `.env.example` to the ignored `.env`, choose a strong development-only SA password, then run:
 
 ```powershell
-Copy-Item .env.example .env
-# Edit .env with real, non-committed values.
+docker compose up -d db
 docker compose --profile migration run --rm migrate
-docker compose up -d --build web db
+docker compose up -d --build web
 ```
 
-The `migration` profile is an explicit, one-shot schema update; `web` never applies migrations at startup. `APP_DB_CONNECTION_STRING` and `MIGRATION_DB_CONNECTION_STRING` must use different SQL logins, both with `Encrypt=True;TrustServerCertificate=False`. Provision a server certificate trusted by the containers before treating this Compose file as Production. The web login needs only normal application data read/write permissions; the migrator receives schema-change permissions only for the one-shot migration and is never exposed to `web`.
+The web listener binds to `127.0.0.1:8080`; SQL is not published to the host. The stack persists local SQL data, resumes, and Data Protection keys in named volumes. Do not place production secrets or data in this stack.
 
-One possible initial provisioning script, run by an administrator over a protected connection and with passwords supplied securely, is:
-
-```sql
-USE [master];
-CREATE LOGIN [applywise_app] WITH PASSWORD = '<app-password>';
-CREATE LOGIN [applywise_migrator] WITH PASSWORD = '<different-migration-password>';
-GO
-USE [ApplyWise];
-CREATE USER [applywise_app] FOR LOGIN [applywise_app];
-ALTER ROLE [db_datareader] ADD MEMBER [applywise_app];
-ALTER ROLE [db_datawriter] ADD MEMBER [applywise_app];
-CREATE USER [applywise_migrator] FOR LOGIN [applywise_migrator];
-ALTER ROLE [db_datareader] ADD MEMBER [applywise_migrator];
-ALTER ROLE [db_datawriter] ADD MEMBER [applywise_migrator];
-ALTER ROLE [db_ddladmin] ADD MEMBER [applywise_migrator];
-```
-
-The compose setup persists SQL data, private resumes, and encrypted Data Protection keys in separate volumes. It mounts the PFX as a runtime secret rather than adding it to an image. For a cloud deployment, replace named volumes with backed-up, access-restricted managed storage and inject secrets from the host secret store.
-
-## Validation commands
+## Release validation commands
 
 ```powershell
-dotnet restore ApplyWise.sln
 dotnet tool restore
-dotnet build ApplyWise.sln -c Release
-dotnet test ApplyWise.sln -c Release
+dotnet restore ApplyWise.sln --locked-mode
+dotnet build ApplyWise.sln -c Release --no-restore
+dotnet test ApplyWise.sln -c Release --no-build
+dotnet format ApplyWise.sln --verify-no-changes --no-restore
+node --check src/ApplyWise.Web/wwwroot/js/home.js
+node --check src/ApplyWise.Web/wwwroot/js/site.js
 node --check src/ApplyWise.Web/wwwroot/js/resume-builder.js
 node --test tests/resume-builder/resume-builder.test.cjs
-dotnet publish src/ApplyWise.Web/ApplyWise.Web.csproj -c Release -o .artifacts/publish
-dotnet tool run dotnet-ef migrations has-pending-model-changes --project src/ApplyWise.Web/ApplyWise.Web.csproj --startup-project src/ApplyWise.Web/ApplyWise.Web.csproj
-dotnet tool run dotnet-ef migrations script --idempotent --project src/ApplyWise.Web/ApplyWise.Web.csproj --startup-project src/ApplyWise.Web/ApplyWise.Web.csproj -o .artifacts/migrations.sql
+dotnet tool run dotnet-ef migrations has-pending-model-changes --project src/ApplyWise.Web/ApplyWise.Web.csproj --startup-project src/ApplyWise.Web/ApplyWise.Web.csproj --configuration Release --no-build
+dotnet list ApplyWise.sln package --vulnerable --include-transitive
 ```
 
-`global.json`, CI, and the Dockerfile target the supported .NET 10 line. The checked-in tool manifest pins `dotnet-ef` to the application's EF Core version. Docker could not be built in this workspace because Docker Desktop/CLI is not installed, so run the container commands in the target environment before a production rollout.
+The SDK, runtime image, ASP.NET Core/EF packages, and EF tool are pinned to the same supported .NET 10 servicing release. CI also boots the exact Web Deploy payload, verifies public routes and release identity, and binds its manifest to both migration and full payload hashes. Re-run the full gate whenever those pins or the lock files change.

@@ -17,8 +17,13 @@ ASPNETCORE_ENVIRONMENT=Production
 ConnectionStrings__DefaultConnection=<Monster MSSQL connection string with Encrypt=True;TrustServerCertificate=False>
 PublicOrigin=https://<public-host-name>
 AllowedHosts=<public-host-name>
-AdminAccess__Emails__0=awaisshaikhcs786@gmail.com
+AdminAccess__Emails__0=<out-of-band provisioned owner address>
 AdminAccess__RequireMfa=true
+ForwardedHeaders__KnownProxies__0=<trusted reverse-proxy IP address>
+HumanChallenge__Enabled=true
+HumanChallenge__SiteKey=<Cloudflare Turnstile site key>
+HumanChallenge__SecretKey=<Cloudflare Turnstile secret key>
+HumanChallenge__ExpectedHostname=<public-host-name>
 Email__Host=<SMTP host>
 Email__Port=587
 Email__UserName=<SMTP user>
@@ -28,30 +33,22 @@ ResumeStorage__RootPath=<absolute private persistent directory>
 DataProtection__KeysPath=<absolute persistent key directory>
 DataProtection__CertificatePath=<absolute path to a mounted PFX or encrypted PEM>
 DataProtection__CertificatePassword=<certificate password>
+Google__GmailImportEnabled=false
 ```
 
-Use absolute paths below the site's sibling `Private` directory for resumes, Data Protection keys, and the PFX certificate—for example, `D:\Sites\site12345\Private\ApplyWise\...` using the actual physical path shown for your Monster site. Never place these files below `wwwroot`. Upload the certificate to `Private` through Monster WebFTP and back up the encrypted key directory; it protects authentication cookies and account-recovery tokens.
+Use absolute paths below the site's sibling `Private` directory for resumes, Data Protection keys, and the PFX certificate—for example, `D:\Sites\site12345\Private\ApplyWise\...` using the actual physical path shown for your Monster site. Production rejects any of these paths beneath the application/Web Deploy root because `target-delete` could erase them. Upload the certificate to `Private` through Monster WebFTP and back up the encrypted key directory; it protects authentication cookies, protected Gmail credentials, and account-recovery tokens.
 
-Production intentionally refuses to start with the `sa` login, placeholder values, wildcard hosts, a non-HTTPS public origin, or relative storage/key paths. SQL encryption and server-certificate validation are enforced by the application even if a hosting profile supplies weaker client flags. A private-CA host may set `Database__AllowUntrustedServerCertificate=true` only when its SQL endpoint cannot provide a publicly trusted certificate; encryption remains mandatory, but this reduces server-identity assurance and must not be used for a public database endpoint. Use a separate, temporary migration identity with schema permissions; never place those elevated credentials in the Monster website environment. If TLS terminates at a separate proxy, set `ForwardedHeaders__KnownProxies__0` (and additional indexed values as needed) only to that proxy's trusted IP address.
+Production intentionally refuses to start with the `sa` login, placeholder values, wildcard hosts, a non-HTTPS public origin, an untrusted proxy configuration, missing Turnstile credentials, or relative storage/key paths. SQL encryption and certificate-chain validation are enforced by the application even if a hosting profile supplies weaker client flags; the SQL endpoint must present a certificate that chains to a trusted root. Use a separate, temporary migration identity with schema permissions and never place those elevated credentials in the Monster website environment. Set `ForwardedHeaders__KnownProxies__0` (and additional indexed values as needed) only to the exact proxy IP addresses that terminate TLS. Restrict the Turnstile widget to the public hostname; registration and anonymous contact submissions are accepted only after server-side token, action, and hostname validation.
 
 Mark secrets as deployment settings and keep them out of `appsettings.json`, shell history, screenshots, and Git.
 
-The owner email must match a registered ApplyWise account. On startup, ApplyWise synchronizes the `Admin` role to this exact allowlist and removes access from administrators no longer listed. The owner console is available at `/admin`. Production requires the owner to finish authenticator setup from Settings, sign out, and sign in again with the authenticator; the policy verifies second-factor evidence on the current session. Add more owners with `AdminAccess__Emails__1`, `AdminAccess__Emails__2`, and so on. Keep the list small and require strong, unique passwords for those accounts.
+Owner identities must be provisioned through the offline `--provision-owner` command documented in [OPERATIONS.md](OPERATIONS.md); public registration intentionally rejects every configured owner address. Before first launch, audit the identity database for pre-existing rows using an owner address and never complete an account whose origin cannot be proven. The command confirms the identity, verifies live TOTP enrollment, assigns the role, and produces recovery codes. On startup, ApplyWise synchronizes the `Admin` role to confirmed allowlisted identities and removes access from administrators no longer listed. The owner console is available at `/admin`, and the policy requires second-factor evidence from the current sign-in session. Add more owners with `AdminAccess__Emails__1`, `AdminAccess__Emails__2`, and so on, using the same procedure.
 
-Google sign-in and Gmail import are disabled by default. Only enable them after rotating the development OAuth secret, storing the replacement as `Google__ClientId` and `Google__ClientSecret`, configuring the consent screen, and registering the production callbacks `/signin-google` and `/signin-google-gmail`.
+Google sign-in and Gmail import are disabled by default. Google credentials enable basic sign-in only. Keep `Google__GmailImportEnabled=false` until the restricted Gmail scope is approved; then rotate the development OAuth secret, configure the consent screen, register `/signin-google` and `/signin-google-gmail`, and explicitly enable Gmail import.
 
 ## 3. Apply migrations
 
-Apply migrations as a controlled deployment step from a trusted workstation or pipeline with temporary database access:
-
-```powershell
-$env:ConnectionStrings__DefaultConnection = "<Monster MSSQL migration connection string>"
-dotnet tool restore
-dotnet tool run dotnet-ef database update --project src/ApplyWise.Web --configuration Release
-Remove-Item Env:ConnectionStrings__DefaultConnection
-```
-
-Back up an existing production database before schema changes. Do not expose the development migrations endpoint in Production.
+Back up an existing production database before schema changes. Download the idempotent `migrations.sql` from the exact successful **Validate release** artifact, verify that its SHA-256 and terminal migration match `release-manifest.json`, review it, and apply that file with a temporary migration identity. Record the backup identifier, release workflow run ID, migration ID, and checksum. Never run `database update` from an arbitrary local checkout against Production, and do not expose the development migrations endpoint there.
 
 ## 4. Configure GitHub deployment
 
@@ -63,13 +60,18 @@ MONSTER_SERVER_USERNAME=site12345
 MONSTER_SERVER_PASSWORD=<Web Deploy password>
 ```
 
-Run **Deploy MonsterASP.NET** from GitHub Actions, enter the exact website name, and confirm the database backup/migration and environment-variable checks. The workflow rebuilds, tests, publishes the compiled application, and deploys it through Web Deploy. Publish output is intentionally excluded from the repository.
+Run **Deploy tested ApplyWise release** from GitHub Actions. Supply the successful **Validate release** run ID from `master`, a distinct earlier successful rollback run ID from an ancestor commit carrying the same required security baseline, the exact website name and HTTPS origin, and the verified backup reference. Confirm that the exact artifact's migration was reviewed and applied, that its schema remains compatible with the selected rollback binary, and that every data invalidation is understood. The current hardening migration intentionally invalidates outstanding six-digit security codes; users can request replacements. The workflow validates both manifests and proves the rollback SHA is the currently healthy production SHA before changing production. It downloads and deploys the immutable tested release artifact and does not rebuild source. On a failed or partial Web Deploy attempt, readiness failure, or version mismatch, it redeploys the chosen rollback binary and rechecks readiness, version, and a public route. Pre-hardening rollback artifacts are rejected. If a migration is destructive or incompatible with the old binary, do not run this workflow until the change has been split into a safe expand/deploy/contract sequence.
+
+Validation artifacts are retained for 90 days. At least every 60 days, refresh the current live last-known-good artifact by dispatching **Validate release** at a protected tag or ref that resolves to the exact live SHA and is still reachable from `master`; record the replacement run ID only after it succeeds. The deploy workflow rejects pull-request artifacts and commits not reachable from the repository's current `master`. Do not allow the live rollback artifact to expire.
+
+For the one-time first rollout of `2026-08-release-hardening-v2`, create two distinct successful validation artifacts carrying the baseline (an ancestor baseline artifact and the intended release), obtain approval through the protected GitHub `production` environment, and enable `bootstrap_first_hardened_release` with the production change-ticket/approval reference. Bootstrap mode still requires a healthy current site, a verified backup, both validated baseline artifacts, their ancestor relationship, and every migration confirmation; it only waives the live rollback-SHA match when the legacy site returns 404 for `/health/release`. Once the hardened endpoint exists, the workflow rejects bootstrap mode automatically. Every later deployment must use the normal live last-known-good SHA check.
 
 ## 5. Production checks
 
 - Confirm HTTPS redirection and HSTS responses.
 - Confirm the security headers remain present after any reverse proxy or CDN configuration.
 - Register a fresh smoke-test account; do not use a personal account.
+- Confirm the Turnstile widget loads on registration and anonymous contact, invalid/replayed tokens fail, and signed-in contact remains usable.
 - Verify static CSS/JavaScript, login/logout, and every protected navigation link.
 - Upload a small text-based demo PDF and confirm it is absent from public static URLs.
 - Create/edit/delete an application and confirm its resume relationship.
@@ -77,8 +79,8 @@ Run **Deploy MonsterASP.NET** from GitHub Actions, enter the exact website name,
 - Confirm a second account receives 404/no data for the first account's record IDs.
 - Review Monster Control Panel logs without logging resume contents or connection strings.
 - Configure backups, health monitoring, alerts, storage retention, and a rollback plan.
-- Confirm `/health` returns `Healthy` after migrations are applied.
-- Restrict `/health` to trusted monitoring where supported; it is rate-limited but performs a real database readiness query.
+- Confirm `/health/live` is responsive; `/health/ready` reports healthy database/schema, private storage, Data Protection, and MFA-enabled owner checks; and `/health/release` reports the expected source commit, `Production` environment, security baseline, and terminal migration.
+- Restrict readiness and release metadata to trusted monitoring where supported; health routes are rate-limited, and readiness performs real database/schema and private-storage probes.
 - Keep the application behind Monster's HTTPS/IIS front end; do not expose a separate internal listener.
 
-See the repository-level [deployment notes](../DEPLOYMENT.md) for the Docker Compose flow and complete production checklist.
+See the repository-level [deployment notes](../DEPLOYMENT.md) and [operations runbook](OPERATIONS.md) for the Docker Compose flow, backups, monitoring, recovery, owner provisioning, and certificate rotation.

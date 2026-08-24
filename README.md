@@ -104,15 +104,17 @@ Production values should come from environment variables or the host's secret st
 | `ConnectionStrings:DefaultConnection` | `ConnectionStrings__DefaultConnection` | Monster MSSQL / SQL Server connection |
 | `PublicOrigin` | `PublicOrigin` | Canonical HTTPS public URL; required in Production |
 | `AllowedHosts` | `AllowedHosts` | Exact public host names; wildcard values are rejected in Production |
+| `ForwardedHeaders:KnownProxies` | `ForwardedHeaders__KnownProxies__0` (and later indexes) | Exact trusted TLS-terminating proxy IPs; required in Production |
+| `HumanChallenge:*` | `HumanChallenge__Enabled`, `HumanChallenge__SiteKey`, `HumanChallenge__SecretKey`, `HumanChallenge__ExpectedHostname` | Cloudflare Turnstile protection for public registration and anonymous contact; required in Production |
 | `Email:*` | `Email__Host`, `Email__Port`, `Email__UserName`, `Email__Password`, `Email__From` | SMTP for confirmation and account recovery |
-| `Google:ClientId`, `Google:ClientSecret` | `Google__ClientId`, `Google__ClientSecret` | Enables Google sign-in and the separate Gmail application-import connection |
-| `Google:Gmail*` | `Google__GmailAutoSyncEnabled`, `Google__GmailSyncIntervalMinutes`, `Google__GmailInitialLookbackDays`, `Google__GmailMaxMessagesPerSync` | Gmail import scheduling and bounded sync limits |
+| `Google:ClientId`, `Google:ClientSecret` | `Google__ClientId`, `Google__ClientSecret` | Enables basic Google sign-in |
+| `Google:Gmail*` | `Google__GmailImportEnabled`, `Google__GmailAutoSyncEnabled`, `Google__GmailSyncIntervalMinutes`, `Google__GmailInitialLookbackDays`, `Google__GmailMaxMessagesPerSync` | Separate fail-closed Gmail release switch, scheduling, and bounded sync limits |
 | `ResumeStorage:RootPath` | `ResumeStorage__RootPath` | Absolute private resume storage path; required in Production |
-| `DataProtection:*` | `DataProtection__KeysPath`, `DataProtection__CertificatePath`, `DataProtection__CertificatePassword` | Persistent key path plus PFX or encrypted PEM certificate; required in Production |
+| `DataProtection:*` | `DataProtection__KeysPath`, `DataProtection__CertificatePath`, `DataProtection__CertificatePassword`, indexed `DataProtection__PreviousCertificates` | Persistent key path, current PFX/encrypted PEM, and prior decryption certificates for safe rotation |
 | `ASPNETCORE_ENVIRONMENT` | `ASPNETCORE_ENVIRONMENT` | Use `Production` on a deployed host |
 | `Performance:SlowRequestThresholdMs` | `Performance__SlowRequestThresholdMs` | Warning-log threshold for slow requests; defaults to 500 ms |
 
-The default private upload path is `App_Data/Uploads/Resumes`. It is configurable, canonicalized, and never mapped as a static web directory. Production rejects relative or placeholder storage/key paths, wildcard hosts, and a non-HTTPS public origin to prevent an accidental insecure launch.
+The default private upload path is `App_Data/Uploads/Resumes`. It is configurable, canonicalized, and never mapped as a static web directory. Production requires resume storage, Data Protection keys, and certificates to be absolute private paths outside the application/Web Deploy directory. It also rejects wildcard hosts, a non-public/non-HTTPS origin, insecure SMTP, and missing human-verification credentials. Create a Turnstile widget restricted to the exact production hostname; keep its secret in the host's secret store.
 
 ### Google sign-in and Gmail imports
 
@@ -143,17 +145,19 @@ placeholder text from this example.
 
 Basic Google sign-in requests identity information only. Gmail is connected later from the Imports page and requests `gmail.readonly` separately. Refresh tokens are protected with ASP.NET Core Data Protection. Sync reads matching messages transiently, stores extracted application suggestions and minimal email evidence, and does not retain email bodies or attachment contents.
 
-`gmail.readonly` is a Google restricted scope. Before offering Gmail imports publicly, configure the OAuth consent screen, privacy policy, authorized domains, Google verification, and any required independent security assessment. Disabling `Google:GmailAutoSyncEnabled` stops background sync without disabling Google sign-in or manual sync.
+`gmail.readonly` is a Google restricted scope. Before offering Gmail imports publicly, configure the OAuth consent screen, privacy policy, authorized domains, Google verification, and any required independent security assessment. `Google:GmailImportEnabled` defaults to `false` and independently blocks the Gmail scheme, routes, UI, manual sync, and worker while leaving basic Google sign-in available. `Google:GmailAutoSyncEnabled` controls scheduling only after Gmail import is enabled.
+
+The concrete backup, restoration, monitoring, owner-provisioning, and certificate-rotation procedures are in [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
 ## Performance
 
 - The dashboard is assembled from five narrow, tenant-scoped, no-tracking database projections rather than one query per card.
-- Read-heavy dashboard filters have supporting composite SQL indexes; apply the latest migration after deployment.
+- Read-heavy dashboard filters have supporting composite SQL indexes; apply the exact release artifact's verified migration before binary deployment.
 - Dynamic responses use Brotli or gzip, and publish output includes precompressed gzip static assets.
 - Resume-builder fonts and template PDF thumbnails load on demand. Large artwork is rendered-size and format optimized.
-- Responses include a `Server-Timing` header. Requests slower than `Performance:SlowRequestThresholdMs` are logged without request bodies or private resume data.
+- Requests slower than `Performance:SlowRequestThresholdMs` are logged without exposing public timing or request bodies/private resume data.
 
-For reliable cloud performance, keep the web app and SQL database in the same region, enable the platform's always-on setting, and use `/health` for the health probe. Measure an authenticated dashboard request after deployment instead of judging only the public home page.
+For reliable cloud performance, keep the web app and SQL database in the same region, enable the platform's always-on setting, use `/health/live` for liveness and `/health/ready` for deployment/traffic readiness, and verify `/health/release` against the released commit. Measure an authenticated dashboard request after deployment instead of judging only the public home page.
 
 ## Security notes
 
