@@ -4,7 +4,7 @@
 }
 
 .aw-contact-hero {
-    padding: 84px 0 108px;
+    padding: clamp(56px, 6vw, 78px) 0 clamp(72px, 7vw, 96px);
     border-bottom: 1px solid var(--aw-border, #dbe4f0);
     background:
         radial-gradient(circle at 92% 12%, rgba(209, 250, 229, .72), transparent 28%),
@@ -14,9 +14,9 @@
 
 .aw-contact-grid {
     display: grid;
-    grid-template-columns: minmax(0, .86fr) minmax(520px, 1.14fr);
+    grid-template-columns: minmax(0, .9fr) minmax(460px, 1.1fr);
     align-items: start;
-    gap: clamp(58px, 7vw, 104px);
+    gap: clamp(44px, 6vw, 88px);
 }
 
 .aw-contact-grid > * { min-width: 0; }
@@ -45,7 +45,7 @@
     max-width: 680px;
     margin: 0;
     color: var(--aw-oxford-navy, #0f172a);
-    font-size: clamp(3rem, 5.4vw, 4.8rem);
+    font-size: clamp(3rem, 5vw, 4.3rem);
     line-height: 1.04;
     letter-spacing: -.055em;
 }
@@ -95,8 +95,8 @@
 
 .aw-contact-form {
     display: grid;
-    gap: 22px;
-    padding: clamp(32px, 4vw, 48px);
+    gap: 20px;
+    padding: clamp(30px, 3.4vw, 42px);
     border: 1px solid var(--aw-border-strong, #bfdbfe);
     border-radius: 28px;
     background: rgba(255, 255, 255, .96);
@@ -178,6 +178,23 @@
     .aw-contact-copy > p { max-width: 760px; }
 }
 
+/* Short desktop screens should introduce both columns without wasting a fold. */
+@media (min-width: 961px) and (max-height: 760px) {
+    .aw-contact-hero { padding: 28px 0 52px; }
+    .aw-contact-grid { gap: clamp(34px, 4vw, 56px); }
+    .aw-contact-copy { top: 104px; padding-top: 12px; }
+    .aw-contact-kicker { margin-bottom: 12px; }
+    .aw-contact-copy h1 { font-size: clamp(2.55rem, 4vw, 3.35rem); }
+    .aw-contact-copy > p { margin-top: 16px; font-size: 1rem; line-height: 1.55; }
+    .aw-contact-expectations { gap: 12px; margin-top: 22px; }
+    .aw-contact-form { gap: 15px; padding: 26px 30px; border-radius: 22px; }
+    .aw-contact-form h2 { font-size: 1.8rem; }
+    .aw-contact-field-grid { gap: 12px; }
+    .aw-contact-field { gap: 5px; }
+    .aw-contact-field textarea.form-control { min-height: 130px; }
+    .aw-contact-form > .btn { min-height: 50px; }
+}
+
 @media (max-width: 760px) {
     .aw-contact-field-grid,
     .aw-contact-guidance-grid { grid-template-columns: minmax(0, 1fr); }
@@ -186,7 +203,7 @@
 
 @media (max-width: 560px) {
     .aw-contact-hero { padding: 38px 0 56px; }
-    .aw-contact-copy h1 { font-size: 2.45rem; }
+    .aw-contact-copy h1 { font-size: clamp(2.05rem, 10.5vw, 2.45rem); overflow-wrap: anywhere; }
     .aw-contact-copy > p { margin-top: 18px; font-size: 1rem; }
     .aw-contact-expectations { margin-top: 28px; }
     .aw-contact-form { gap: 18px; padding: 26px 20px; border-radius: 22px; }

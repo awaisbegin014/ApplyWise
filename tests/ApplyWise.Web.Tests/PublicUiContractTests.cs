@@ -347,6 +347,25 @@ public sealed class PublicUiContractTests
             loginCardRule.Groups["declarations"].Value);
     }
 
+    [Fact]
+    public void Public_product_and_contact_pages_adapt_to_short_laptops_and_narrow_phones()
+    {
+        var productStyles = ReadSource(
+            "src", "ApplyWise.Web", "wwwroot", "css", "product-pages.css");
+        var contactStyles = ReadSource(
+            "src", "ApplyWise.Web", "wwwroot", "css", "contact.css");
+        var theme = ReadSource(
+            "src", "ApplyWise.Web", "wwwroot", "css", "theme.css");
+
+        Assert.Contains("@media (min-width: 961px) and (max-height: 760px)", productStyles, StringComparison.Ordinal);
+        Assert.Contains("min-height: calc(100svh - 84px);", productStyles, StringComparison.Ordinal);
+        Assert.Contains("overflow-wrap: anywhere;", productStyles, StringComparison.Ordinal);
+        Assert.Contains("@media (min-width: 961px) and (max-height: 760px)", contactStyles, StringComparison.Ordinal);
+        Assert.Contains("grid-template-columns: minmax(0, .9fr) minmax(460px, 1.1fr);", contactStyles, StringComparison.Ordinal);
+        Assert.Contains("--aw-content-gutter: clamp(12px, 2.35vw, 32px);", theme, StringComparison.Ordinal);
+        Assert.Contains("button { min-width: 0; }", theme, StringComparison.Ordinal);
+    }
+
     private static string ReadSource(params string[] relativePath) =>
         File.ReadAllText(Path.Combine([RepositoryRoot, .. relativePath]));
 
