@@ -1,215 +1,245 @@
 # ApplyWise
 
-**Track every application. Choose the right resume. Apply smarter.**
+**Track every opportunity. Apply with the right resume.**
 
-ApplyWise is a portfolio-ready ASP.NET Core MVC job-search workspace. It helps job seekers keep applications and resume versions connected, compare a resume with a job description, plan follow-ups and interviews, understand job-search patterns, and review suspicious job posts—all inside a private per-user dashboard.
+[![Validate release](https://github.com/awaisbegin014/ApplyWise/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/awaisbegin014/ApplyWise/actions/workflows/ci.yml)
+[![Production monitor](https://github.com/awaisbegin014/ApplyWise/actions/workflows/monitor-production.yml/badge.svg?branch=master)](https://github.com/awaisbegin014/ApplyWise/actions/workflows/monitor-production.yml)
+[![.NET 10](https://img.shields.io/badge/.NET-10-512BD4)](https://dotnet.microsoft.com/)
+[![Public beta](https://img.shields.io/badge/status-public%20beta-0f766e)](https://applywise.runasp.net/)
 
-## The problem it solves
+ApplyWise is a privacy-focused job-search workspace built with ASP.NET Core MVC. It connects application tracking, resume version management, explainable resume matching, interview planning, analytics, and a browser-based resume builder in one private account.
 
-Job searches quickly become fragmented across job boards, company websites, email, and referrals. ApplyWise keeps the operational details in one place: where and when someone applied, which resume they used, what happens next, and which patterns may be limiting results.
+## Live product
 
-## Features
+- **Application:** [https://applywise.runasp.net](https://applywise.runasp.net/)
+- **Status:** deployed public beta
+- **Health:** [`/health/live`](https://applywise.runasp.net/health/live), [`/health/ready`](https://applywise.runasp.net/health/ready), and [`/health/release`](https://applywise.runasp.net/health/release)
 
-- ASP.NET Core Identity registration, login, logout, and account management
-- Optional Google sign-in with explicit account linking for existing users
-- Optional read-only Gmail connection that detects likely application confirmations and sent resumes for user review
-- Private PDF resume library with version names, notes, and a default resume
-- Browser-local one-page resume builder with live A4 fit checks, section reordering, safe bold/italic/underline formatting, autosave, and selectable-text PDF download
-- Job application CRUD with status, source, deadline, job link, notes, and submitted-resume memory
-- Search, filters, sorting, responsive tables, polished empty states, and confirmation screens
-- Deterministic Readiness, Job Match, and ApplyWise Fit estimates with evidence, document diagnostics, prioritized reviews, history comparison, and no per-analysis AI call
-- Best-resume comparison and one-click assignment to a tracked application
-- Interview scheduling, outcome tracking, application deadlines, and dashboard actions
-- Application funnel, resume performance, platform response, and recurring skill-gap analytics
-- Rule-based job-post quality and scam-risk checks with saved private history
-- Per-user authorization across every product module and private resume downloads
+The current deployment uses a resource-limited free hosting tier. It is suitable for a controlled beta, not a high-traffic public launch.
 
-The matching and scam-review features are deliberately explainable local heuristics in this release; they are not generative AI and do not send resume content to an external model.
+![ApplyWise homepage showing application tracking, resume matching, and Wiso](docs/screenshots/applywise-home.png)
 
-The current resume-analysis model, score formula, privacy boundaries, evaluation set, and benchmark commands are documented in [docs/ats-analysis.md](docs/ats-analysis.md). Taxonomy importing and provenance are documented separately in [docs/ats-taxonomy.md](docs/ats-taxonomy.md).
+## What ApplyWise does
+
+Most job searches become fragmented across job boards, email, spreadsheets, calendar notes, and several resume files. ApplyWise keeps the operational history together:
+
+1. Save a role with its source, status, deadline, notes, and next action.
+2. Upload or build multiple resume versions.
+3. Compare resume evidence with the job description using deterministic local rules.
+4. Record the resume actually submitted for each application.
+5. Track interviews, outcomes, follow-ups, and application patterns.
+
+Resume matching is intentionally explainable. This release does **not** send resume text to an external generative-AI service, and its estimates never claim to reproduce an employer's ATS or guarantee an interview.
+
+## Product tour
+
+### Job tracker
+
+Keep every company, role, status, deadline, interview, note, and submitted resume attached to one application record.
+
+![ApplyWise job tracker product page](docs/screenshots/applywise-job-tracker.png)
+
+### Resume match
+
+Compare a job description with saved resumes and inspect supported, weak, and missing evidence before choosing a version.
+
+![ApplyWise resume match product page](docs/screenshots/applywise-resume-match.png)
+
+### Resume builder
+
+Create a focused resume with guided sections, local draft saving, a live A4 preview, and selectable-text PDF export.
+
+![ApplyWise resume builder product page](docs/screenshots/applywise-resume-builder.png)
+
+## Core capabilities
+
+- ASP.NET Core Identity registration, email confirmation, recovery, login, logout, MFA, and account management
+- Optional Google sign-in with explicit linking for existing accounts
+- Optional read-only Gmail import flow with a separate fail-closed production switch
+- Private PDF resume library with version names, notes, default selection, ownership checks, and download authorization
+- Browser-local resume builder with autosave, section reordering, formatting controls, A4 fit checks, and text-based PDF generation
+- Application tracking with status, source, deadline, job link, notes, custom fields, and submitted-resume history
+- Explainable readiness, job-match, and best-resume comparisons with evidence and analysis history
+- Interview scheduling, outcome tracking, deadlines, and dashboard next actions
+- Funnel, resume-performance, platform-response, and recurring skill-gap analytics
+- Rule-based job-post quality and scam-risk reviews with private saved history
+- Admin monitoring, user reports, contact-message management, release health, and production diagnostics
+- Tenant-scoped authorization and resource quotas across product modules
 
 ## Technology
 
-- .NET 10 / ASP.NET Core MVC
-- C#, Razor Views, Bootstrap 5, and small vanilla JavaScript enhancements
-- ASP.NET Core Identity
-- Entity Framework Core 10 and SQL Server / LocalDB
-- PdfPig for PDF text extraction
-- pdfmake 0.3.11 for client-side, selectable-text resume PDFs
+| Layer | Technology |
+|---|---|
+| Web | .NET 10, ASP.NET Core MVC, Razor Views |
+| UI | Bootstrap 5, custom CSS design system, vanilla JavaScript |
+| Authentication | ASP.NET Core Identity, optional Google OAuth |
+| Data | Entity Framework Core 10, SQL Server / LocalDB |
+| Resume parsing | PdfPig plus bounded PDF and DOCX inspection workers |
+| PDF creation | pdfmake 0.3.11 with embedded local fonts |
+| Protection | Data Protection certificates, antiforgery, rate limits, Turnstile, security headers |
+| Delivery | GitHub Actions, immutable release artifacts, protected deployment, rollback evidence |
+| Hosting | MonsterASP.NET and Monster MSSQL |
 
-## Screenshots
+## Architecture
 
-The screenshot checklist and safe demo-data guidance are in [docs/screenshots/README.md](docs/screenshots/README.md). Capture these views before publishing the portfolio repository:
+```text
+Browser / Razor UI
+        |
+ASP.NET Core MVC controllers
+        |
+Application services
+  |-- dashboard projections
+  |-- application and interview workflows
+  |-- resume storage and bounded extraction
+  |-- deterministic resume analysis
+  |-- Gmail import review pipeline
+        |
+Entity Framework Core + SQL Server
 
-1. Public home and branded sign-in
-2. Dashboard
-3. Resume library
-4. Resume Builder editor and live PDF preview
-5. Applications list and details
-6. Resume analysis result
-7. Best resume picker
-8. Interviews and deadlines
-9. Analytics
-10. Job-post review result
+Private filesystem
+  |-- uploaded resumes
+  |-- Data Protection keys
+  `-- encryption certificate
+```
 
-No personal resume, email address, real employer notes, or production data should appear in portfolio screenshots.
+Public files are served from `wwwroot`. Uploaded resumes, Data Protection keys, and encryption certificates are required to live outside the deployed web directory in production.
 
-## Prerequisites
+## Repository layout
 
-- .NET 10 SDK
-- SQL Server Express/Developer or SQL Server LocalDB
-- EF Core CLI: `dotnet tool install --global dotnet-ef`
-- Visual Studio 2022 or VS Code (optional)
+```text
+src/ApplyWise.Web/             ASP.NET Core MVC application
+tests/ApplyWise.Web.Tests/     application, security, release, and UI contract tests
+tests/resume-builder/          browser-side resume builder tests
+tools/                         font and taxonomy tooling
+docs/                          architecture, ATS, operations, and deployment documentation
+.github/workflows/             validation, protected deployment, and production monitoring
+```
 
 ## Run locally
 
-From the repository root:
+### Prerequisites
+
+- .NET 10 SDK matching [`global.json`](global.json)
+- SQL Server LocalDB, Express, Developer, or another SQL Server instance
+- Optional: EF Core CLI
 
 ```powershell
+dotnet tool install --global dotnet-ef
+```
+
+### Setup
+
+```powershell
+git clone https://github.com/awaisbegin014/ApplyWise.git
+cd ApplyWise
 dotnet restore
-dotnet build
 dotnet ef database update --project src/ApplyWise.Web
 dotnet run --project src/ApplyWise.Web
 ```
 
-Open the HTTPS URL printed by ASP.NET Core, create an account, and add demo data. No seeded login is included; this avoids shipping a shared password or private sample resume.
+Open the HTTPS address printed by ASP.NET Core and create an account. No shared demo password or production data is included.
 
-LocalDB is the safe development default in `appsettings.json`. Override it without editing tracked files:
+LocalDB is the development default. To use another SQL Server without editing tracked files:
 
 ```powershell
-dotnet user-secrets set "ConnectionStrings:DefaultConnection" "<your SQL Server connection string>" --project src/ApplyWise.Web
+dotnet user-secrets set "ConnectionStrings:DefaultConnection" "<connection-string>" --project src/ApplyWise.Web
 ```
 
-## Database and migrations
+## Configuration
 
-The migration history builds Identity, resume management, application tracking, resume analysis, interviews, analytics, and job-post checks in order. Apply the existing migrations with:
+Production values must come from environment variables or a host secret store. Never commit real credentials.
+
+| Configuration | Environment variable | Purpose |
+|---|---|---|
+| `ConnectionStrings:DefaultConnection` | `ConnectionStrings__DefaultConnection` | SQL Server connection |
+| `PublicOrigin` | `PublicOrigin` | Canonical public HTTPS origin |
+| `AllowedHosts` | `AllowedHosts` | Exact permitted public hosts |
+| `ForwardedHeaders:KnownProxies` | `ForwardedHeaders__KnownProxies__0` | Trusted TLS proxy addresses |
+| `HumanChallenge:*` | `HumanChallenge__Enabled`, `HumanChallenge__SiteKey`, `HumanChallenge__SecretKey`, `HumanChallenge__ExpectedHostname` | Turnstile protection |
+| `Email:*` | `Email__Host`, `Email__Port`, `Email__UserName`, `Email__Password`, `Email__From` | Confirmation and recovery email |
+| `Google:*` | `Google__ClientId`, `Google__ClientSecret` | Optional Google sign-in |
+| `Google:Gmail*` | `Google__GmailImportEnabled`, `Google__GmailAutoSyncEnabled` and bounded sync settings | Optional Gmail import controls |
+| `ResumeStorage:RootPath` | `ResumeStorage__RootPath` | Private resume directory |
+| `DataProtection:*` | `DataProtection__KeysPath`, certificate path/password, previous certificates | Persistent encryption material |
+| `Performance:SlowRequestThresholdMs` | `Performance__SlowRequestThresholdMs` | Slow-request warning threshold |
+
+Google sign-in uses `/signin-google`. Gmail linking is a separate consent flow at `/signin-google-gmail` and requests `gmail.readonly`. Gmail access remains independently disabled unless its production switch is enabled and the required Google verification is complete.
+
+## Database migrations
+
+Apply committed migrations:
 
 ```powershell
 dotnet ef database update --project src/ApplyWise.Web
 ```
 
-For a new schema change:
+Create a new migration:
 
 ```powershell
 dotnet ef migrations add <MigrationName> --project src/ApplyWise.Web
 dotnet ef database update --project src/ApplyWise.Web
 ```
 
-## Configuration
+Production migrations are reviewed and applied against a recoverable backup before the corresponding immutable release artifact is deployed.
 
-Production values should come from environment variables or the host's secret store:
+## Testing
 
-| Setting | Environment variable | Purpose |
-|---|---|---|
-| `ConnectionStrings:DefaultConnection` | `ConnectionStrings__DefaultConnection` | Monster MSSQL / SQL Server connection |
-| `SqlTransport:*` | `SqlTransport__AllowMonsterAspManagedCertificate`, `SqlTransport__MonsterAspHost` | Exact-host exception for MonsterASP's provider-managed SQL certificate; encryption remains mandatory |
-| `PublicOrigin` | `PublicOrigin` | Canonical HTTPS public URL; required in Production |
-| `AllowedHosts` | `AllowedHosts` | Exact public host names; wildcard values are rejected in Production |
-| `ForwardedHeaders:KnownProxies` | `ForwardedHeaders__KnownProxies__0` (and later indexes) | Exact trusted TLS-terminating proxy IPs; required in Production |
-| `HumanChallenge:*` | `HumanChallenge__Enabled`, `HumanChallenge__SiteKey`, `HumanChallenge__SecretKey`, `HumanChallenge__ExpectedHostname` | Cloudflare Turnstile protection for public registration and anonymous contact; required in Production |
-| `Email:*` | `Email__Host`, `Email__Port`, `Email__UserName`, `Email__Password`, `Email__From` | SMTP for confirmation and account recovery |
-| `Google:ClientId`, `Google:ClientSecret` | `Google__ClientId`, `Google__ClientSecret` | Enables basic Google sign-in |
-| `Google:Gmail*` | `Google__GmailImportEnabled`, `Google__GmailAutoSyncEnabled`, `Google__GmailSyncIntervalMinutes`, `Google__GmailInitialLookbackDays`, `Google__GmailMaxMessagesPerSync` | Separate fail-closed Gmail release switch, scheduling, and bounded sync limits |
-| `ResumeStorage:RootPath` | `ResumeStorage__RootPath` | Absolute private resume storage path; required in Production |
-| `DataProtection:*` | `DataProtection__KeysPath`, `DataProtection__CertificatePath`, `DataProtection__CertificatePassword`, indexed `DataProtection__PreviousCertificates` | Persistent key path, current PFX/encrypted PEM, and prior decryption certificates for safe rotation |
-| `ASPNETCORE_ENVIRONMENT` | `ASPNETCORE_ENVIRONMENT` | Use `Production` on a deployed host |
-| `Performance:SlowRequestThresholdMs` | `Performance__SlowRequestThresholdMs` | Warning-log threshold for slow requests; defaults to 500 ms |
-
-The default private upload path is `App_Data/Uploads/Resumes`. It is configurable, canonicalized, and never mapped as a static web directory. Production requires resume storage, Data Protection keys, and certificates to be absolute private paths outside the application/Web Deploy directory. It also rejects wildcard hosts, a non-public/non-HTTPS origin, insecure SMTP, and missing human-verification credentials. Create a Turnstile widget restricted to the exact production hostname; keep its secret in the host's secret store.
-
-### Google sign-in and Gmail imports
-
-Create a Web application OAuth client in Google Cloud and configure these authorized redirect URIs for each deployed origin:
-
-```text
-https://your-host/signin-google
-https://your-host/signin-google-gmail
-```
-
-For the local HTTPS launch profile, use:
-
-```text
-https://localhost:7075/signin-google
-https://localhost:7075/signin-google-gmail
-```
-
-Keep the client secret outside tracked configuration:
+Run the application test suite:
 
 ```powershell
-dotnet user-secrets set "Google:ClientId" "<client-id>" --project src/ApplyWise.Web
-dotnet user-secrets set "Google:ClientSecret" "<client-secret>" --project src/ApplyWise.Web
+dotnet test ApplyWise.sln --configuration Release
 ```
 
-Use the OAuth **Web application** client ID, which ends in
-`.apps.googleusercontent.com`; do not use the project ID, API key, or the
-placeholder text from this example.
-
-Basic Google sign-in requests identity information only. Gmail is connected later from the Imports page and requests `gmail.readonly` separately. Refresh tokens are protected with ASP.NET Core Data Protection. Sync reads matching messages transiently, stores extracted application suggestions and minimal email evidence, and does not retain email bodies or attachment contents.
-
-`gmail.readonly` is a Google restricted scope. Before offering Gmail imports publicly, configure the OAuth consent screen, privacy policy, authorized domains, Google verification, and any required independent security assessment. `Google:GmailImportEnabled` defaults to `false` and independently blocks the Gmail scheme, routes, UI, manual sync, and worker while leaving basic Google sign-in available. `Google:GmailAutoSyncEnabled` controls scheduling only after Gmail import is enabled.
-
-The concrete backup, restoration, monitoring, owner-provisioning, and certificate-rotation procedures are in [docs/OPERATIONS.md](docs/OPERATIONS.md).
-
-## Performance
-
-- The dashboard is assembled from five narrow, tenant-scoped, no-tracking database projections rather than one query per card.
-- Read-heavy dashboard filters have supporting composite SQL indexes; apply the exact release artifact's verified migration before binary deployment.
-- Dynamic responses use Brotli or gzip, and publish output includes precompressed gzip static assets.
-- Resume-builder fonts and template PDF thumbnails load on demand. Large artwork is rendered-size and format optimized.
-- Requests slower than `Performance:SlowRequestThresholdMs` are logged without exposing public timing or request bodies/private resume data.
-
-For reliable cloud performance, keep the web app and SQL database in the same region, enable the platform's always-on setting, use `/health/live` for liveness and `/health/ready` for deployment/traffic readiness, and verify `/health/release` against the released commit. Measure an authenticated dashboard request after deployment instead of judging only the public home page.
-
-## Security notes
-
-- Product controllers require authentication and query tenant-owned records with the current Identity user ID.
-- Posted resume/application relationships are revalidated against the current user before persistence.
-- Dedicated view models constrain binding and antiforgery validation protects state-changing forms.
-- Resume uploads are limited to PDF extension/MIME/signature and 5 MB, receive generated storage names, and are rejected if text extraction fails.
-- PDF extraction has global concurrency, page-count, and extracted-text limits to reduce parser resource exhaustion.
-- Razor encoding is retained for stored user content; outbound job links use safe external-link attributes.
-- Baseline response headers block MIME sniffing, framing, embedded objects, and unused browser permissions.
-- Development settings, environment files, uploaded PDFs, build output, logs, and local databases are ignored by Git.
-- Production uses the ASP.NET Core exception handler, HTTPS redirection, and HSTS.
-
-This is application-level hardening, not a substitute for platform monitoring, backups, malware scanning, rate limiting, retention policy, and periodic dependency/security updates.
-
-## Deployment
-
-The documented hosted release path is **MonsterASP.NET + Monster MSSQL**. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) and [DEPLOYMENT.md](DEPLOYMENT.md) for configuration, migration, private storage, Web Deploy, and verification steps.
-
-Create a local release artifact outside the repository with:
+Run browser-side resume-builder tests:
 
 ```powershell
-dotnet publish src/ApplyWise.Web -c Release -o "$env:TEMP/ApplyWise-publish"
+node --test tests/resume-builder/resume-builder.test.cjs
 ```
 
-## Delivery roadmap
+CI validates restore lock files, compilation, automated tests, security/release contracts, migrations, and deployable artifacts. The production workflow accepts only previously validated release and rollback runs, requires a protected environment approval, records deployment evidence, and verifies release identity plus readiness.
 
-- Levels 1–3: repository foundation, Identity, responsive SaaS dashboard shell
-- Level 4: private resume version management
-- Level 5: application tracking and resume-used memory
-- Levels 6–7: resume/job analysis and best-resume selection
-- Level 8: interviews, deadlines, and next actions
-- Level 9: analytics and rule-based job-post review
-- Level 10: product polish, accessibility, security review, documentation, and deployment readiness
+## Security and privacy
 
-## Interview demo
+- Every product controller requires authentication and tenant-owned queries use the current Identity user ID.
+- Resume/application relationships are revalidated before persistence.
+- State-changing requests use antiforgery protection and constrained view models.
+- Resume uploads are limited by extension, MIME type, signature, size, quota, parser concurrency, page count, and extracted-text bounds.
+- Uploaded files use generated storage names and are never exposed as static web files.
+- Production requires exact hosts, HTTPS origin, trusted proxies, secure SMTP, persistent Data Protection, and human verification.
+- Baseline headers restrict framing, MIME sniffing, embedded objects, referrers, and unused browser permissions.
+- Public registration, authentication, analysis, uploads, contact, Gmail sync, and health routes use bounded rate limits.
 
-Start with the dashboard, then show one complete story: upload two demo resumes, create a job with a description, compare both resumes, assign the recommended version, change the application status, schedule an interview, and finish on analytics and the job-post review. That demonstrates product thinking, relational modeling, authorization, file handling, service-layer logic, and responsive UI in one coherent flow.
+See [SECURITY.md](SECURITY.md) for vulnerability reporting and the supported security policy.
 
-## Resume bullets
+## Deployment and operations
 
-- Built a full-stack ASP.NET Core MVC application that helps job seekers track applications, manage resume versions, and remember which resume was submitted for each job.
-- Added a privacy-first resume studio with structured editing, browser autosave, responsive live preview, and direct A4 PDF generation without uploading draft content.
-- Implemented explainable resume-to-job analysis with match scoring, missing-skill detection, best-resume recommendation, and private analysis history.
-- Developed interview scheduling, application-deadline tracking, dashboard analytics, platform response insights, and rule-based job-post risk detection.
-- Used ASP.NET Core Identity, Entity Framework Core, SQL Server, Razor Views, Bootstrap, secure private PDF storage, and per-user authorization to deliver a SaaS-style product.
+- [Deployment guide](docs/DEPLOYMENT.md)
+- [MonsterASP deployment checklist](DEPLOYMENT.md)
+- [Operations, backup, restore, monitoring, and certificate rotation](docs/OPERATIONS.md)
+- [ATS analysis model and evaluation](docs/ats-analysis.md)
+- [Skill taxonomy import and provenance](docs/ats-taxonomy.md)
 
-## Future improvements
+The three GitHub workflows provide distinct responsibilities:
 
-- private object storage and malware scanning for scalable production resume storage
-- Calendar integration for interviews and application deadlines
-- Rate limiting, structured observability, account export/deletion, and formal retention controls
-- Optional LLM-assisted analysis with consent, redaction, cost controls, and auditable prompts
-- Automated unit, integration, accessibility, and browser regression suites in CI
+- `ci.yml` builds, tests, and produces immutable release artifacts.
+- `deploy-monster.yml` validates provenance, deploys with protected approval, verifies readiness, and supports automatic binary rollback.
+- `monitor-production.yml` checks the public production endpoints and tracks unhealthy incidents.
+
+## Current release status
+
+ApplyWise is live and suitable for a controlled public beta. The application, database, schema, private storage, Data Protection, owner/MFA checks, contact page, and release fingerprint are covered by production health checks.
+
+Before a broad launch, move from the current free hosting tier to resources sized from staging load-test results and add centralized logs, alert delivery, managed private object storage, and malware scanning.
+
+## Roadmap
+
+- Calendar integration for interviews and deadlines
+- Managed private object storage and upload malware scanning
+- Formal retention, account export, and expanded deletion workflows
+- Staging load tests and capacity-based hosting upgrades
+- Centralized structured logs, traces, dashboards, and alerts
+- Optional consent-based AI assistance with redaction, cost controls, and auditable prompts
+
+---
+
+Built as a full-stack product case study in ASP.NET Core, secure file handling, explainable matching, relational workflows, responsive UX, and production delivery.
