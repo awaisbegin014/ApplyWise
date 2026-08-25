@@ -55,6 +55,7 @@ html[data-theme="light"] {
     --aw-radius-control: 8px;
     --aw-radius-card: 12px;
     --aw-radius-dialog: 16px;
+    --aw-content-gutter: clamp(12px, 2.35vw, 32px);
 
     /* Compatibility aliases for the existing feature styles. */
     --bg: var(--aw-page);
@@ -130,6 +131,15 @@ html[data-theme="dark"] {
 *::after { box-sizing: border-box; }
 
 html { min-width: 320px; color-scheme: light dark; }
+
+img,
+video,
+canvas { max-width: 100%; }
+
+input,
+select,
+textarea,
+button { min-width: 0; }
 
 body,
 .app-body,
@@ -507,7 +517,7 @@ textarea::placeholder { color: var(--aw-muted); opacity: .82; }
 }
 
 .menu-button:hover { color: var(--aw-link); border-color: var(--aw-primary); background: var(--aw-primary-soft); }
-.app-content { width: 100%; max-width: 1600px; padding: 32px; }
+.app-content { width: 100%; max-width: 1600px; padding: var(--aw-content-gutter); }
 .account-menu-trigger { min-width: var(--aw-touch-target); min-height: var(--aw-touch-target); color: var(--aw-text); border-radius: var(--aw-radius-control); }
 .account-avatar,
 .account-avatar-fallback { color: var(--aw-oxford-navy); background: var(--aw-frosted-blue); }
@@ -2047,7 +2057,6 @@ html[data-theme="dark"] .account-avatar-fallback {
 .home-body .aw-home-footer-bottom { color: #d3e6e3; }
 
 @media (max-width: 1280px) {
-    .app-content { padding: 24px; }
     .aw-filter-panel { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .aw-filter-heading { grid-column: 1 / -1; }
     .aw-rb-workspace { grid-template-columns: minmax(0, 1fr) minmax(360px, .8fr); }
@@ -2076,7 +2085,7 @@ html[data-theme="dark"] .account-avatar-fallback {
     .sidebar-open .app-sidebar { transform: none; box-shadow: var(--aw-shadow-menu); }
     .sidebar-open .sidebar-backdrop { display: block; background: rgba(15, 23, 42, .62); touch-action: none; }
     .topbar { padding: 0 16px; }
-    .app-content { padding: 20px; }
+    .app-content { padding-block: 20px; }
     .identity-body main { padding: 20px; place-items: start center; }
     .identity-body .aw-auth-shell { grid-template-columns: minmax(0, 1fr); width: min(100%, 560px); }
     .identity-body .aw-auth-visual {
@@ -2227,6 +2236,22 @@ html[data-theme="dark"] .account-avatar-fallback {
     .schedule-table td::before,
     .scam-history-table td::before { content: attr(data-label); color: var(--aw-muted); font-size: .75rem; font-weight: 700; text-transform: uppercase; }
     .schedule-table .table-actions { justify-content: flex-start; }
+}
+
+@media (max-width: 480px) {
+    .topbar { height: 60px; padding-inline: 10px; }
+    .topbar-actions { min-width: 0; }
+    .account-menu-trigger { max-width: calc(100vw - 76px); }
+    .page-heading .form-actions,
+    .aw-page-heading .form-actions,
+    .aw-detail-actions { display: grid; grid-template-columns: minmax(0, 1fr); }
+    .page-heading .form-actions .btn,
+    .aw-page-heading .form-actions .btn,
+    .aw-detail-actions .btn { width: 100%; }
+    .admin-contact-filters,
+    .admin-user-search { grid-template-columns: minmax(0, 1fr); }
+    .admin-contact-filters > *,
+    .admin-user-search > * { grid-column: 1; width: 100%; }
 }
 
 @media (max-width: 420px) {

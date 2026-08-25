@@ -32,7 +32,7 @@
 
 .aw-product-hero {
     position: relative;
-    padding: 82px 0 112px;
+    padding: clamp(56px, 6vw, 82px) 0 clamp(72px, 7vw, 96px);
     border-bottom: 1px solid var(--aw-border, #dbe4f0);
     background:
         radial-gradient(circle at 88% 12%, var(--aw-product-accent-wash), transparent 34%),
@@ -56,7 +56,7 @@
     display: grid;
     grid-template-columns: minmax(0, 1.08fr) minmax(400px, .92fr);
     align-items: center;
-    gap: clamp(56px, 7vw, 104px);
+    gap: clamp(44px, 6vw, 88px);
 }
 
 .aw-product-hero-grid > * { min-width: 0; }
@@ -100,7 +100,7 @@
     max-width: 830px;
     margin: 0;
     color: var(--aw-oxford-navy, #0f172a);
-    font-size: clamp(3rem, 5.7vw, 5rem);
+    font-size: clamp(3rem, 5.2vw, 4.6rem);
     line-height: 1.04;
     letter-spacing: -.055em;
 }
@@ -202,7 +202,7 @@
 .aw-product-audience dd { font-size: .98rem; }
 
 .aw-product-section {
-    padding: 104px 0;
+    padding: clamp(72px, 8vw, 96px) 0;
     scroll-margin-top: 116px;
     border-bottom: 1px solid var(--aw-border, #dbe4f0);
     background: #fff;
@@ -238,7 +238,7 @@
 .aw-product-feature-card {
     min-width: 0;
     min-height: 100%;
-    padding: 34px;
+    padding: clamp(26px, 2.5vw, 32px);
     border: 1px solid var(--aw-border, #dbe4f0);
     border-radius: 22px;
     background: linear-gradient(160deg, #fff 65%, var(--aw-product-accent-soft));
@@ -349,6 +349,42 @@
     .aw-product-feature-icon { grid-row: 1 / 3; margin: 0; }
 }
 
+/* Keep the complete product proposition readable on common short laptops. */
+@media (min-width: 961px) and (max-height: 760px) {
+    .aw-product-hero {
+        display: flex;
+        min-height: calc(100svh - 84px);
+        align-items: center;
+        padding: 24px 0 30px;
+    }
+
+    .aw-product-hero-grid { gap: clamp(34px, 4vw, 56px); }
+    .aw-product-breadcrumb { min-height: 36px; margin-bottom: 8px; }
+    .aw-product-breadcrumb a { min-height: 36px; }
+    .aw-product-kicker { margin-bottom: 12px; }
+
+    .aw-product-hero h1 {
+        max-width: 690px;
+        font-size: clamp(2.55rem, 4vw, 3.35rem);
+        line-height: 1.02;
+    }
+
+    .aw-product-lead {
+        margin-top: 15px;
+        font-size: 1rem;
+        line-height: 1.5;
+    }
+
+    .aw-product-actions { margin-top: 20px; }
+    .aw-product-actions .btn { min-height: 48px; padding-inline: 22px; }
+    .aw-product-brief { padding: 8px 10px 8px 30px; }
+    .aw-product-brief-icon { width: 72px; height: 72px; margin: -8px 0 4px 16px; }
+    .aw-product-brief h2 { margin: 16px 0 12px; font-size: clamp(1.7rem, 2.35vw, 2rem); }
+    .aw-product-brief-copy { font-size: .95rem; line-height: 1.52; }
+    .aw-product-audience { gap: 14px; margin-top: 17px; padding-top: 15px; }
+    .aw-product-audience dd { font-size: .9rem; line-height: 1.5; }
+}
+
 @media (max-width: 760px) {
     .aw-product-hero { padding: 48px 0 64px; }
     .aw-product-section { padding: 68px 0; }
@@ -359,7 +395,7 @@
 @media (max-width: 560px) {
     .aw-product-hero { padding-top: 36px; }
     .aw-product-breadcrumb { margin-bottom: 14px; }
-    .aw-product-hero h1 { font-size: 2.45rem; letter-spacing: -.045em; }
+    .aw-product-hero h1 { font-size: clamp(2.05rem, 10.5vw, 2.45rem); letter-spacing: -.045em; overflow-wrap: anywhere; }
     .aw-product-lead { margin-top: 18px; font-size: 1rem; }
     .aw-product-actions { margin-top: 26px; }
     .aw-product-actions .btn { width: 100%; min-height: 54px; }
