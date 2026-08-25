@@ -135,6 +135,25 @@ public sealed class ProductionReadinessConfigurationTests
         }
     }
 
+    [Fact]
+    public void Production_deployment_injects_Google_sign_in_secrets_into_release_and_rollback_only_at_runtime()
+    {
+        var repositoryRoot = FindRepositoryRoot();
+        var workflow = File.ReadAllText(Path.Combine(
+            repositoryRoot,
+            ".github",
+            "workflows",
+            "deploy-monster.yml"));
+
+        Assert.Contains("secrets.APPLYWISE_GOOGLE_CLIENT_ID", workflow, StringComparison.Ordinal);
+        Assert.Contains("secrets.APPLYWISE_GOOGLE_CLIENT_SECRET", workflow, StringComparison.Ordinal);
+        Assert.Contains("Set-GoogleRuntimeConfiguration $env:RELEASE_PUBLISH_PATH", workflow, StringComparison.Ordinal);
+        Assert.Contains("Set-GoogleRuntimeConfiguration $env:ROLLBACK_PUBLISH_PATH", workflow, StringComparison.Ordinal);
+        Assert.Contains("Google__ClientId", workflow, StringComparison.Ordinal);
+        Assert.Contains("Google__ClientSecret", workflow, StringComparison.Ordinal);
+        Assert.Contains("\"Google__GmailImportEnabled\" = \"false\"", workflow, StringComparison.Ordinal);
+    }
+
     private static EmailOptions Copy(
         EmailOptions source,
         string? host = null,
@@ -162,5 +181,21 @@ public sealed class ProductionReadinessConfigurationTests
             HashAlgorithmName.SHA256,
             RSASignaturePadding.Pkcs1);
         return request.CreateSelfSigned(notBefore, notAfter);
+    }
+
+    private static string FindRepositoryRoot()
+    {
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory);
+             directory is not null;
+             directory = directory.Parent)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "ApplyWise.sln")))
+            {
+                return directory.FullName;
+            }
+        }
+
+        throw new DirectoryNotFoundException(
+            $"Could not locate ApplyWise.sln above '{AppContext.BaseDirectory}'.");
     }
 }
