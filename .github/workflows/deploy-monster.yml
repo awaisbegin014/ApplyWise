@@ -259,6 +259,73 @@ jobs:
           "ROLLBACK_MIGRATION_SHA256=$($rollbackPayload.MigrationSha256)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "ROLLBACK_SCHEMA_MIGRATION=$($rollbackPayload.SchemaMigration)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
+      - name: Apply protected Google sign-in runtime configuration
+        shell: pwsh
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.APPLYWISE_GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.APPLYWISE_GOOGLE_CLIENT_SECRET }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:GOOGLE_CLIENT_ID) -or
+              $env:GOOGLE_CLIENT_ID -notmatch '^[0-9]+-[a-z0-9]+\.apps\.googleusercontent\.com$') {
+            throw "The production Google OAuth client ID is missing or malformed."
+          }
+          if ([string]::IsNullOrWhiteSpace($env:GOOGLE_CLIENT_SECRET) -or
+              $env:GOOGLE_CLIENT_SECRET.Length -gt 512) {
+            throw "The production Google OAuth client secret is missing or malformed."
+          }
+
+          function Set-GoogleRuntimeConfiguration([string]$publishPath) {
+            $webConfigPath = Join-Path $publishPath "web.config"
+            [xml]$document = Get-Content -LiteralPath $webConfigPath -Raw
+            $aspNetCore = $document.configuration.location.'system.webServer'.aspNetCore
+            if ($null -eq $aspNetCore) {
+              throw "The validated publish payload does not contain the expected ASP.NET Core web.config node."
+            }
+
+            $environmentVariables = $aspNetCore.environmentVariables
+            if ($null -eq $environmentVariables) {
+              $environmentVariables = $document.CreateElement("environmentVariables")
+              [void]$aspNetCore.AppendChild($environmentVariables)
+            }
+
+            $runtimeValues = [ordered]@{
+              "Google__ClientId" = $env:GOOGLE_CLIENT_ID
+              "Google__ClientSecret" = $env:GOOGLE_CLIENT_SECRET
+              "Google__GmailImportEnabled" = "false"
+            }
+            foreach ($entry in $runtimeValues.GetEnumerator()) {
+              $node = @($environmentVariables.environmentVariable) |
+                Where-Object { $_.name -eq $entry.Key } |
+                Select-Object -First 1
+              if ($null -eq $node) {
+                $node = $document.CreateElement("environmentVariable")
+                [void]$environmentVariables.AppendChild($node)
+              }
+              $node.SetAttribute("name", $entry.Key)
+              $node.SetAttribute("value", $entry.Value)
+            }
+
+            $writerSettings = [Xml.XmlWriterSettings]::new()
+            $writerSettings.Encoding = [Text.UTF8Encoding]::new($false)
+            $writerSettings.Indent = $true
+            $writer = [Xml.XmlWriter]::Create($webConfigPath, $writerSettings)
+            try { $document.Save($writer) } finally { $writer.Dispose() }
+
+            [xml]$verified = Get-Content -LiteralPath $webConfigPath -Raw
+            $configuredNames = @(
+              $verified.configuration.location.'system.webServer'.aspNetCore.environmentVariables.environmentVariable |
+                ForEach-Object { $_.name })
+            foreach ($requiredName in $runtimeValues.Keys) {
+              if ($requiredName -notin $configuredNames) {
+                throw "The Google runtime configuration overlay could not be verified."
+              }
+            }
+          }
+
+          Set-GoogleRuntimeConfiguration $env:RELEASE_PUBLISH_PATH
+          Set-GoogleRuntimeConfiguration $env:ROLLBACK_PUBLISH_PATH
+          Write-Host "Protected Google sign-in configuration was applied to release and rollback payloads; Gmail import remains disabled."
+
       - name: Ensure the application pool is running before preflight
         shell: pwsh
         env:
