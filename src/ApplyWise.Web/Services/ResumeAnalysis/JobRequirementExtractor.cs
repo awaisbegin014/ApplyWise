@@ -45,6 +45,8 @@ public sealed partial class JobRequirementExtractor(
                 AddOrUpgrade(byId, new JobRequirement(entry.Id, entry.PreferredLabel, priority, category,
                     SafeSource(source), entry.Id, PriorityWeight(priority)));
             }
+
+            AddExplicitDomainPhrases(source, currentHeading, byId);
         }
 
         foreach (Match match in YearsRegex().Matches(text))
@@ -140,6 +142,44 @@ public sealed partial class JobRequirementExtractor(
             var name = seniority.Value.Trim();
             AddOrUpgrade(results, new JobRequirement("seniority." + Slug(name), name,
                 RequirementPriority.Informational, RequirementCategory.Seniority, SafeSource(lead), null, .5d));
+        }
+    }
+
+    private void AddExplicitDomainPhrases(
+        string source,
+        string heading,
+        IDictionary<string, JobRequirement> results)
+    {
+        if (!RequirementHeading().IsMatch(heading) || source.IndexOfAny([',', ';']) < 0)
+        {
+            return;
+        }
+
+        var marker = ExplicitRequirementSuffix().Match(source);
+        var list = marker.Success ? source[..marker.Index] : source;
+        var candidates = ExplicitRequirementSeparator().Split(list)
+            .Select(item => ExplicitRequirementPrefix().Replace(item, string.Empty).Trim(' ', '.', ':', '-', '\u2022', '(', ')'))
+            .Where(item => item.Length is >= 3 and <= 60)
+            .Where(item => item.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length <= 6)
+            .Where(item => !IsGenericLine(item))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (candidates.Length < 2) return;
+
+        var priority = ClassifyPriority(source, heading);
+        foreach (var candidate in candidates)
+        {
+            // Maintained taxonomy entries keep their canonical matching behavior;
+            // this fallback is only for profession-specific terms outside it.
+            if (taxonomy.FindMatches(candidate).Count > 0) continue;
+            AddOrUpgrade(results, new JobRequirement(
+                "domain.custom." + Slug(candidate),
+                candidate,
+                priority,
+                RequirementCategory.DomainSkill,
+                SafeSource(source),
+                null,
+                PriorityWeight(priority)));
         }
     }
 
@@ -241,4 +281,10 @@ public sealed partial class JobRequirementExtractor(
     private static partial Regex JobTitleRegex();
     [GeneratedRegex(@"\b(?:experience|ability)\s+(?:in|to)?\s*(?<task>(?:manag(?:e|ing)|lead(?:ing)?|coordinat(?:e|ing)|mentor(?:ing)?|supervis(?:e|ing)|communicat(?:e|ing)|present(?:ing)?|negotiate|analy[sz](?:e|ing))\b[^.;\r\n]{3,90})", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex EmbeddedResponsibilityRegex();
+    [GeneratedRegex(@"\s*(?:,|;|\band\b)\s*", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex ExplicitRequirementSeparator();
+    [GeneratedRegex(@"^(?:experience|knowledge|proficiency|competence|skills?)\s+(?:with|in|of)\s+", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex ExplicitRequirementPrefix();
+    [GeneratedRegex(@"\s+(?:are|is)\s+(?:strictly\s+)?(?:required|preferred|essential|mandatory)\b|\s+required\s+for\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex ExplicitRequirementSuffix();
 }

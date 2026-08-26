@@ -2,7 +2,9 @@ using System.Reflection;
 using System.Security.Claims;
 using System.Text.Json;
 using ApplyWise.Web.Controllers;
+using ApplyWise.Web.Models;
 using ApplyWise.Web.Models.ResumeBuilder;
+using ApplyWise.Web.Services.Subscriptions;
 using ApplyWise.Web.ViewModels.ResumeBuilder;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -218,15 +220,16 @@ public sealed class ResumeBuilderTests
     }
 
     [Fact]
-    public void Controller_is_authorized_attribute_routed_and_get_only()
+    public void Controller_is_authorized_and_exposes_protected_get_and_export_routes()
     {
         var controllerType = typeof(ResumeBuilderController);
         Assert.NotNull(controllerType.GetCustomAttribute<AuthorizeAttribute>());
         Assert.Equal("resume-builder", controllerType.GetCustomAttribute<RouteAttribute>()?.Template);
 
-        var action = Assert.Single(controllerType.GetMethods(
-            BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly));
-        Assert.Equal(nameof(ResumeBuilderController.Index), action.Name);
+        var actions = controllerType.GetMethods(
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly);
+        Assert.Equal(2, actions.Length);
+        var action = actions.Single(method => method.Name == nameof(ResumeBuilderController.Index));
         var httpMethod = Assert.Single(action.GetCustomAttributes<HttpMethodAttribute>());
         var get = Assert.IsType<HttpGetAttribute>(httpMethod);
         Assert.Equal(string.Empty, get.Template);
@@ -237,46 +240,68 @@ public sealed class ResumeBuilderTests
         Assert.Null(parameter.DefaultValue);
         Assert.NotNull(parameter.GetCustomAttribute<FromQueryAttribute>());
 
+        var export = actions.Single(method => method.Name == nameof(ResumeBuilderController.AuthorizeExport));
+        Assert.IsType<HttpPostAttribute>(Assert.Single(export.GetCustomAttributes<HttpMethodAttribute>()));
+        Assert.NotNull(export.GetCustomAttribute<ValidateAntiForgeryTokenAttribute>());
+
         var constructor = Assert.Single(controllerType.GetConstructors());
-        Assert.Empty(constructor.GetParameters());
+        Assert.Single(constructor.GetParameters());
     }
 
     [Fact]
-    public void Authenticated_controller_returns_account_scoped_page_model_without_storage_services()
+    public async Task Authenticated_controller_returns_account_scoped_page_model_without_storage_services()
     {
         const string accountId = "controller-test-account";
         var controller = CreateController(new ClaimsPrincipal(new ClaimsIdentity(
             [new Claim(ClaimTypes.NameIdentifier, accountId)],
             authenticationType: "Test")));
 
-        var result = Assert.IsType<ViewResult>(controller.Index());
+        var result = Assert.IsType<ViewResult>(await controller.Index());
         var model = Assert.IsType<ResumeBuilderPageViewModel>(result.Model);
 
         Assert.Equal(ResumeBuilderPageViewModel.CreateDraftStorageKey(accountId), model.DraftStorageKey);
         Assert.False(string.IsNullOrWhiteSpace(model.SampleResumeJson));
 
-        var targetedResult = Assert.IsType<ViewResult>(controller.Index("certifications"));
+        var targetedResult = Assert.IsType<ViewResult>(await controller.Index("certifications"));
         var targetedModel = Assert.IsType<ResumeBuilderPageViewModel>(targetedResult.Model);
         Assert.Equal("achievementsAndCertifications", targetedModel.InitialSection);
 
-        var invalidResult = Assert.IsType<ViewResult>(controller.Index("experience\"] [data-action=\"clear"));
+        var invalidResult = Assert.IsType<ViewResult>(await controller.Index("experience\"] [data-action=\"clear"));
         var invalidModel = Assert.IsType<ResumeBuilderPageViewModel>(invalidResult.Model);
         Assert.Null(invalidModel.InitialSection);
     }
 
     [Fact]
-    public void Controller_challenges_a_principal_without_an_account_identifier()
+    public async Task Controller_challenges_a_principal_without_an_account_identifier()
     {
         var controller = CreateController(new ClaimsPrincipal(new ClaimsIdentity()));
 
-        Assert.IsType<ChallengeResult>(controller.Index());
+        Assert.IsType<ChallengeResult>(await controller.Index());
     }
 
-    private static ResumeBuilderController CreateController(ClaimsPrincipal user) => new()
+    private static ResumeBuilderController CreateController(ClaimsPrincipal user) => new(new StubSubscriptionService())
     {
         ControllerContext = new ControllerContext
         {
             HttpContext = new DefaultHttpContext { User = user }
         }
     };
+
+    private sealed class StubSubscriptionService : ISubscriptionService
+    {
+        private static readonly SubscriptionSnapshot Snapshot = new(
+            SubscriptionTier.Free, false, null, 2, 0, 0, 2, 0, null);
+
+        public Task<SubscriptionSnapshot> GetSnapshotAsync(string userId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(Snapshot);
+
+        public Task<ResumeBuildEntitlement> TryConsumeResumeBuildAsync(string userId, string? templateId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new ResumeBuildEntitlement(true, Snapshot with { ResumeBuildUsed = 1 }));
+
+        public Task<AtsUsageReservation> TryReserveAtsAnalysisAsync(string userId, string feature, int promptCharacters, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task CompleteAtsAnalysisAsync(long usageRecordId, bool succeeded, int responseCharacters, string? model, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<UpgradeSubmissionResult> SubmitUpgradeRequestAsync(string userId, UpgradeSubmission submission, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<bool> ApproveUpgradeRequestAsync(long requestId, string adminUserId, string? note, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<bool> RejectUpgradeRequestAsync(long requestId, string adminUserId, string? note, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
 }

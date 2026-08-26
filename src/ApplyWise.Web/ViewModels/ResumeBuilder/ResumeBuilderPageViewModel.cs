@@ -2,7 +2,9 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using ApplyWise.Web.Models;
 using ApplyWise.Web.Models.ResumeBuilder;
+using ApplyWise.Web.Services.Subscriptions;
 
 namespace ApplyWise.Web.ViewModels.ResumeBuilder;
 
@@ -15,8 +17,17 @@ public sealed class ResumeBuilderPageViewModel
     public required string DraftStorageKey { get; init; }
     public required string SampleResumeJson { get; init; }
     public string? InitialSection { get; init; }
+    public required SubscriptionSnapshot Subscription { get; init; }
 
-    public static ResumeBuilderPageViewModel CreateForAccount(string accountId, string? initialSection = null)
+    public static ResumeBuilderPageViewModel CreateForAccount(
+        string accountId,
+        string? initialSection = null) =>
+        CreateForAccount(accountId, FreePreviewSubscription(), initialSection);
+
+    public static ResumeBuilderPageViewModel CreateForAccount(
+        string accountId,
+        SubscriptionSnapshot subscription,
+        string? initialSection = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(accountId);
 
@@ -24,7 +35,8 @@ public sealed class ResumeBuilderPageViewModel
         {
             DraftStorageKey = CreateDraftStorageKey(accountId),
             SampleResumeJson = JsonSerializer.Serialize(ResumeSampleFactory.Create(), SerializerOptions),
-            InitialSection = NormalizeInitialSection(initialSection)
+            InitialSection = NormalizeInitialSection(initialSection),
+            Subscription = subscription
         };
     }
 
@@ -67,4 +79,15 @@ public sealed class ResumeBuilderPageViewModel
         options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
         return options;
     }
+
+    private static SubscriptionSnapshot FreePreviewSubscription() => new(
+        SubscriptionTier.Free,
+        IsPro: false,
+        ProExpiresAt: null,
+        AtsAnalysisLimit: 2,
+        AtsAnalysisUsed: 0,
+        AtsAnalysisReserved: 0,
+        ResumeBuildLimit: 2,
+        ResumeBuildUsed: 0,
+        UsageWindowStartsAt: null);
 }

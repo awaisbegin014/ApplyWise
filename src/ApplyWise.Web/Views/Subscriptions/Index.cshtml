@@ -12,37 +12,37 @@
     }
     <section class="aw-plan-hero">
         <span class="eyebrow">Plans</span>
-        <h1>Start free. Upgrade when AI becomes part of your workflow.</h1>
-        <p>All core ApplyWise tools remain available. Pro increases your AI coaching allowance after manual payment verification.</p>
+        <h1>Start with two complete resume workflows.</h1>
+        <p>Free includes two resume PDF downloads and two ATS + Gemini reports. Pro unlocks unlimited resume building and a larger analysis allowance after manual payment verification.</p>
     </section>
 
     <section class="aw-plan-grid">
         <article class="panel aw-plan-card @(subscription.IsPro ? null : "is-current")">
             <span class="aw-plan-pill">Free</span>
-            <h2>Explore AI coaching</h2>
-            <strong class="aw-plan-price">@Model.Options.FreeAiTrialLimit <small>AI trials</small></strong>
+            <h2>Build and test your first resumes</h2>
+            <strong class="aw-plan-price">2 <small>complete workflows</small></strong>
             <ul>
-                <li>Core job tracker and resume tools</li>
-                <li>Resume builder and saved versions</li>
-                <li>@Model.Options.FreeAiTrialLimit lifetime AI bullet rewrites</li>
+                <li>@Model.Options.FreeResumeBuildLimit lifetime resume PDF downloads</li>
+                <li>@Model.Options.FreeAtsAnalysisLimit lifetime ATS + Gemini reports</li>
+                <li>Job matching and best-resume ranking inside ATS</li>
             </ul>
             @if (!subscription.IsPro)
             {
-                <span class="aw-current-plan">Current plan · @subscription.AiRemaining trial@(subscription.AiRemaining == 1 ? "" : "s") left</span>
+                <span class="aw-current-plan">Current plan · @subscription.ResumeBuildsRemaining builds and @subscription.AtsAnalysesRemaining ATS reports left</span>
             }
         </article>
         <article class="panel aw-plan-card aw-pro-card @(subscription.IsPro ? "is-current" : null)">
             <span class="aw-plan-pill is-pro">Pro</span>
-            <h2>Use AI throughout your job search</h2>
+            <h2>Build, analyze, and match continuously</h2>
             <strong class="aw-plan-price">@Model.Options.Currency @Model.Options.ProPrice.ToString("0.##") <small>/ @Model.Options.ProDurationDays days</small></strong>
             <ul>
-                <li>@Model.Options.ProMonthlyAiLimit AI coaching requests per @Model.Options.ProDurationDays-day cycle</li>
-                <li>Truthful, job-aware bullet rewrites</li>
-                <li>Usage visibility and controlled limits</li>
+                <li>Unlimited resume builder PDF downloads</li>
+                <li>@Model.Options.ProAtsAnalysisLimit ATS + Gemini reports per @Model.Options.ProDurationDays-day cycle</li>
+                <li>Multi-resume job matching and best-fit recommendation</li>
             </ul>
             @if (subscription.IsPro)
             {
-                <span class="aw-current-plan">Active until @subscription.ProExpiresAt?.ToLocalTime().ToString("MMM d, yyyy") · @subscription.AiRemaining AI requests left</span>
+                <span class="aw-current-plan">Active until @subscription.ProExpiresAt?.ToLocalTime().ToString("MMM d, yyyy") · @subscription.AtsAnalysesRemaining ATS reports left</span>
             }
             else if (Model.LatestRequest?.Status == ProUpgradeRequestStatus.Pending)
             {
@@ -67,7 +67,7 @@
         </section>
     }
 
-    <p class="aw-plan-footnote">AI limits protect service availability and API costs. Pro activation is not automatic: the owner verifies the submitted transaction reference first.</p>
+    <p class="aw-plan-footnote">ATS limits protect service availability and Gemini API costs. Pro activation is not automatic: the owner verifies the submitted transaction reference first.</p>
 </div>
 
 @section Styles { <link rel="stylesheet" href="~/css/subscriptions-ai.css" asp-append-version="true" /> }

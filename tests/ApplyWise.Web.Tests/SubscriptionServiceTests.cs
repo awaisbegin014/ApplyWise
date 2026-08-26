@@ -14,39 +14,55 @@ public sealed class SubscriptionServiceTests
         DateTimeOffset.Parse("2026-08-26T08:00:00Z");
 
     [Fact]
-    public async Task Free_account_receives_two_successful_lifetime_ai_trials()
+    public async Task Free_account_receives_two_successful_lifetime_ats_reports()
     {
         await using var db = CreateDb();
         var service = CreateService(db);
 
-        var first = await service.TryReserveAiUseAsync("user-1", "bullet", 100);
+        var first = await service.TryReserveAtsAnalysisAsync("user-1", "ats-check", 100);
         Assert.True(first.Allowed);
-        await service.CompleteAiUseAsync(first.UsageRecordId!.Value, true, 200, "test-model");
+        await service.CompleteAtsAnalysisAsync(first.UsageRecordId!.Value, true, 200, "test-model");
 
-        var second = await service.TryReserveAiUseAsync("user-1", "bullet", 100);
+        var second = await service.TryReserveAtsAnalysisAsync("user-1", "ats-job-match", 100);
         Assert.True(second.Allowed);
-        await service.CompleteAiUseAsync(second.UsageRecordId!.Value, true, 200, "test-model");
+        await service.CompleteAtsAnalysisAsync(second.UsageRecordId!.Value, true, 200, "test-model");
 
-        var third = await service.TryReserveAiUseAsync("user-1", "bullet", 100);
+        var third = await service.TryReserveAtsAnalysisAsync("user-1", "ats-check", 100);
         Assert.False(third.Allowed);
-        Assert.Equal(0, third.Snapshot.AiRemaining);
+        Assert.Equal(0, third.Snapshot.AtsAnalysesRemaining);
         Assert.Equal(2, await db.AiUsageRecords.CountAsync(
             item => item.Status == AiUsageStatus.Succeeded));
     }
 
     [Fact]
-    public async Task Failed_ai_call_does_not_consume_the_allowance()
+    public async Task Failed_ai_call_does_not_consume_the_ats_allowance()
     {
         await using var db = CreateDb();
         var service = CreateService(db);
 
-        var reservation = await service.TryReserveAiUseAsync("user-1", "bullet", 100);
-        await service.CompleteAiUseAsync(reservation.UsageRecordId!.Value, false, 0, "test-model");
+        var reservation = await service.TryReserveAtsAnalysisAsync("user-1", "ats-check", 100);
+        await service.CompleteAtsAnalysisAsync(reservation.UsageRecordId!.Value, false, 0, "test-model");
 
         var snapshot = await service.GetSnapshotAsync("user-1");
-        Assert.Equal(2, snapshot.AiRemaining);
-        Assert.Equal(0, snapshot.AiUsed);
+        Assert.Equal(2, snapshot.AtsAnalysesRemaining);
+        Assert.Equal(0, snapshot.AtsAnalysisUsed);
         Assert.Equal(AiUsageStatus.Failed, (await db.AiUsageRecords.SingleAsync()).Status);
+    }
+
+    [Fact]
+    public async Task Free_account_can_export_two_resumes_then_requires_pro()
+    {
+        await using var db = CreateDb();
+        var service = CreateService(db);
+
+        Assert.True((await service.TryConsumeResumeBuildAsync("user-1", "classic")).Allowed);
+        var second = await service.TryConsumeResumeBuildAsync("user-1", "modern");
+        Assert.True(second.Allowed);
+        Assert.Equal(0, second.Snapshot.ResumeBuildsRemaining);
+
+        var third = await service.TryConsumeResumeBuildAsync("user-1", "compact");
+        Assert.False(third.Allowed);
+        Assert.Equal(2, await db.ResumeBuildUsageRecords.CountAsync());
     }
 
     [Fact]
@@ -66,7 +82,8 @@ public sealed class SubscriptionServiceTests
 
         var snapshot = await service.GetSnapshotAsync("user-1");
         Assert.True(snapshot.IsPro);
-        Assert.Equal(100, snapshot.AiLimit);
+        Assert.Equal(100, snapshot.AtsAnalysisLimit);
+        Assert.True(snapshot.HasUnlimitedResumeBuilds);
         Assert.Equal(Now.AddDays(30), snapshot.ProExpiresAt);
         var request = await db.ProUpgradeRequests.SingleAsync();
         Assert.Equal(ProUpgradeRequestStatus.Approved, request.Status);
@@ -104,8 +121,9 @@ public sealed class SubscriptionServiceTests
             new WorkspaceQuotaGate(db),
             Options.Create(new SubscriptionOptions
             {
-                FreeAiTrialLimit = 2,
-                ProMonthlyAiLimit = 100,
+                FreeAtsAnalysisLimit = 2,
+                ProAtsAnalysisLimit = 100,
+                FreeResumeBuildLimit = 2,
                 ProDurationDays = 30,
                 ProPrice = 500m,
                 Currency = "PKR"

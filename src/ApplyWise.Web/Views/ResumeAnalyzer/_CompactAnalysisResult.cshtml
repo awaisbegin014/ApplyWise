@@ -57,6 +57,11 @@
         </div>
     </header>
 
+    @if (Model.AiFeedback is not null)
+    {
+        <partial name="_AiAtsFeedback" model="Model.AiFeedback" />
+    }
+
     <section class="aw-ra-panel aw-ra-compact-review" aria-labelledby="@($"{resultId}-review")">
         <div class="aw-ra-panel-heading">
             <div>
@@ -169,22 +174,6 @@
                 }
             </div>
         </section>
-    }
-
-    @if (Model.BulletReviews.Count > 0)
-    {
-        <details class="aw-ra-panel aw-ra-v3-panel aw-ra-v3-details">
-            <summary><span><small>Line-level review</small><strong>Experience and project bullets</strong></span><b>@Model.BulletReviews.Count bullets</b></summary>
-            <div class="aw-ra-v3-list">
-                @foreach (var bullet in Model.BulletReviews.Take(30))
-                {
-                    <article><strong>@bullet.Section · @bullet.Status</strong><p>“@bullet.Original”</p>
-                    @foreach (var problem in bullet.Problems.Take(3)) { <small>• @problem</small> }
-                    @if (bullet.Status == ReviewStatus.NeedsImprovement) { <p><b>Safe template:</b> @bullet.SuggestedTemplate</p> }
-                    </article>
-                }
-            </div>
-        </details>
     }
 
     <details class="aw-ra-panel aw-ra-v3-panel aw-ra-v3-details">

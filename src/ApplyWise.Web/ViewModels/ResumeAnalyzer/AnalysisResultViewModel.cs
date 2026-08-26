@@ -1,5 +1,6 @@
 using ApplyWise.Web.Models;
 using ApplyWise.Web.Services.ResumeAnalysis;
+using ApplyWise.Web.Services.Ai;
 
 namespace ApplyWise.Web.ViewModels.ResumeAnalyzer;
 
@@ -40,6 +41,8 @@ public sealed class AnalysisResultViewModel
     public IReadOnlyList<string> RemainingIssues { get; set; } = [];
     public IReadOnlyList<string> NewlyDetectedEvidence { get; set; } = [];
     public required DateTimeOffset CreatedAt { get; init; }
+    public AiAtsFeedback? AiFeedback { get; init; }
+    public string? AiModel { get; init; }
 
     public int DetectedSkillCount => MatchedKeywords.Count + MissingKeywords.Count;
     public bool IsLegacy => !string.Equals(ScoreVersion, ResumeAnalysisResult.CurrentScoreVersion, StringComparison.Ordinal);

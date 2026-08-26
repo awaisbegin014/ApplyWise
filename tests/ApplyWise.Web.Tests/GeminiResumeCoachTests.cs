@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using ApplyWise.Web.Services.Ai;
+using ApplyWise.Web.Services.ResumeAnalysis;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;
@@ -10,12 +11,12 @@ namespace ApplyWise.Web.Tests;
 public sealed class GeminiResumeCoachTests
 {
     [Fact]
-    public async Task Coach_uses_server_header_and_parses_structured_rewrites()
+    public async Task Advisor_preserves_score_redacts_contact_details_and_parses_structured_feedback()
     {
         var handler = new RecordingHandler("""
             {
               "candidates": [{
-                "content": { "parts": [{ "text": "{\"headline\":\"Clearer impact\",\"assessment\":\"The original is vague.\",\"missingContextQuestion\":\"What outcome did you verify?\",\"rewrites\":[{\"text\":\"Built customer-facing web features with the development team.\",\"rationale\":\"Starts with a direct action.\"},{\"text\":\"Collaborated with developers to deliver features for the company website.\",\"rationale\":\"Preserves the stated teamwork.\"}],\"truthfulnessNote\":\"No new metric was added.\"}" }] }
+                "content": { "parts": [{ "text": "{\"overview\":\"The deterministic result shows a sound base.\",\"strengths\":[\"Clear healthcare role\",\"Relevant laboratory evidence\"],\"priorityImprovements\":[{\"title\":\"Clarify outcomes\",\"whyItMatters\":\"Evidence is easier to verify.\",\"recommendedAction\":\"Add a truthful outcome where one is known.\",\"resumeSection\":\"Experience\"},{\"title\":\"Name certification status\",\"whyItMatters\":\"The role asks for it.\",\"recommendedAction\":\"State the credential only if currently held.\",\"resumeSection\":\"Certifications\"}],\"missingEvidence\":[\"No current certification is demonstrated\"],\"jobFitSummary\":\"The resume demonstrates laboratory experience.\",\"truthfulnessNote\":\"Do not add credentials that are not held.\"}" }] }
               }]
             }
             """);
@@ -23,7 +24,7 @@ public sealed class GeminiResumeCoachTests
         {
             BaseAddress = new Uri("https://generativelanguage.googleapis.com/")
         };
-        var coach = new GeminiResumeCoach(
+        var advisor = new GeminiAtsAdvisor(
             client,
             Options.Create(new GeminiOptions
             {
@@ -31,19 +32,51 @@ public sealed class GeminiResumeCoachTests
                 ApiKey = "server-secret",
                 Model = "test-model"
             }),
-            NullLogger<GeminiResumeCoach>.Instance);
+            NullLogger<GeminiAtsAdvisor>.Instance);
 
-        var result = await coach.ImproveBulletAsync(
-            "Helped the development team build features for the company website.",
-            "Build accessible web experiences.");
+        var analysis = CreateAnalysis();
+        var result = await advisor.CreateFeedbackAsync(new ResumeAnalysisAiContext(
+            "Taylor Example | taylor@example.com | +92 300 1234567 | https://example.com\nMedical Laboratory Technician with five years of specimen processing experience.",
+            "Medical laboratory technician. Certification required. Process specimens safely.",
+            analysis));
 
-        Assert.Equal("Clearer impact", result.Headline);
-        Assert.Equal(2, result.Rewrites.Count);
+        Assert.Equal(2, result.PriorityImprovements.Count);
+        Assert.Equal(76, analysis.OverallScore);
         Assert.Equal("server-secret", handler.ApiKey);
         Assert.DoesNotContain("server-secret", handler.RequestUri!.ToString(), StringComparison.Ordinal);
         Assert.Contains("responseMimeType", handler.RequestBody, StringComparison.Ordinal);
         Assert.Contains("application/json", handler.RequestBody, StringComparison.Ordinal);
+        Assert.Contains("Overall score: 76/100", handler.RequestBody, StringComparison.Ordinal);
+        Assert.Contains("[email redacted]", handler.RequestBody, StringComparison.Ordinal);
+        Assert.Contains("[phone redacted]", handler.RequestBody, StringComparison.Ordinal);
+        Assert.Contains("[link redacted]", handler.RequestBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("taylor@example.com", handler.RequestBody, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("including healthcare", handler.RequestBody, StringComparison.OrdinalIgnoreCase);
     }
+
+    private static ResumeAnalysisResult CreateAnalysis() => new()
+    {
+        OverallScore = 76,
+        AtsReadinessScore = 82,
+        JobMatchScore = 70,
+        ConfidenceScore = 88,
+        ScoreBreakdown =
+        [
+            new ScoreComponent("ats", "ATS readiness", 41, 50, ["Core sections were detected."])
+        ],
+        MatchedRequirements = [],
+        ReviewItems = [],
+        SectionReviews = [],
+        BulletReviews = [],
+        Evidence = [],
+        MissingRequirements = [],
+        Suggestions = [],
+        Warnings = [],
+        DetectedJobRequirementCount = 1,
+        MustHaveCoverage = 0,
+        RequiredCoverage = 0,
+        EvidenceQuality = 0.7
+    };
 
     private sealed class RecordingHandler(string responseBody) : HttpMessageHandler
     {

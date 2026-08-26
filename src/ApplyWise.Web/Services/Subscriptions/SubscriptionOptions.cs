@@ -4,8 +4,9 @@ public sealed class SubscriptionOptions
 {
     public const string SectionName = "Subscriptions";
 
-    public int FreeAiTrialLimit { get; set; } = 2;
-    public int ProMonthlyAiLimit { get; set; } = 100;
+    public int FreeAtsAnalysisLimit { get; set; } = 2;
+    public int ProAtsAnalysisLimit { get; set; } = 100;
+    public int FreeResumeBuildLimit { get; set; } = 2;
     public int ProDurationDays { get; set; } = 30;
     public decimal ProPrice { get; set; } = 500m;
     public string Currency { get; set; } = "PKR";

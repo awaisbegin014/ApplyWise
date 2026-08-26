@@ -10,12 +10,16 @@ public sealed record SubscriptionSnapshot(
     SubscriptionTier Tier,
     bool IsPro,
     DateTimeOffset? ProExpiresAt,
-    int AiLimit,
-    int AiUsed,
-    int AiReserved,
+    int AtsAnalysisLimit,
+    int AtsAnalysisUsed,
+    int AtsAnalysisReserved,
+    int ResumeBuildLimit,
+    int ResumeBuildUsed,
     DateTimeOffset? UsageWindowStartsAt)
 {
-    public int AiRemaining => Math.Max(0, AiLimit - AiUsed - AiReserved);
+    public int AtsAnalysesRemaining => Math.Max(0, AtsAnalysisLimit - AtsAnalysisUsed - AtsAnalysisReserved);
+    public int ResumeBuildsRemaining => IsPro ? int.MaxValue : Math.Max(0, ResumeBuildLimit - ResumeBuildUsed);
+    public bool HasUnlimitedResumeBuilds => IsPro;
 }
 
 public sealed record UpgradeSubmission(
@@ -27,13 +31,15 @@ public sealed record UpgradeSubmission(
 
 public sealed record UpgradeSubmissionResult(bool Succeeded, string? Error, long? RequestId = null);
 
-public sealed record AiUsageReservation(bool Allowed, SubscriptionSnapshot Snapshot, long? UsageRecordId = null);
+public sealed record AtsUsageReservation(bool Allowed, SubscriptionSnapshot Snapshot, long? UsageRecordId = null);
+public sealed record ResumeBuildEntitlement(bool Allowed, SubscriptionSnapshot Snapshot);
 
 public interface ISubscriptionService
 {
     Task<SubscriptionSnapshot> GetSnapshotAsync(string userId, CancellationToken cancellationToken = default);
-    Task<AiUsageReservation> TryReserveAiUseAsync(string userId, string feature, int promptCharacters, CancellationToken cancellationToken = default);
-    Task CompleteAiUseAsync(long usageRecordId, bool succeeded, int responseCharacters, string? model, CancellationToken cancellationToken = default);
+    Task<AtsUsageReservation> TryReserveAtsAnalysisAsync(string userId, string feature, int promptCharacters, CancellationToken cancellationToken = default);
+    Task CompleteAtsAnalysisAsync(long usageRecordId, bool succeeded, int responseCharacters, string? model, CancellationToken cancellationToken = default);
+    Task<ResumeBuildEntitlement> TryConsumeResumeBuildAsync(string userId, string? templateId, CancellationToken cancellationToken = default);
     Task<UpgradeSubmissionResult> SubmitUpgradeRequestAsync(string userId, UpgradeSubmission submission, CancellationToken cancellationToken = default);
     Task<bool> ApproveUpgradeRequestAsync(long requestId, string adminUserId, string? note, CancellationToken cancellationToken = default);
     Task<bool> RejectUpgradeRequestAsync(long requestId, string adminUserId, string? note, CancellationToken cancellationToken = default);
@@ -45,7 +51,8 @@ public sealed class SubscriptionService(
     IOptions<SubscriptionOptions> options,
     TimeProvider timeProvider) : ISubscriptionService
 {
-    private const string AiQuotaResource = "ai-requests";
+    private const string AtsQuotaResource = "ats-analysis-requests";
+    private const string ResumeBuildQuotaResource = "resume-builds";
     private const string UpgradeResource = "pro-upgrade-requests";
     private SubscriptionOptions Settings => options.Value;
 
@@ -67,7 +74,7 @@ public sealed class SubscriptionService(
             : (DateTimeOffset?)null;
         var query = dbContext.AiUsageRecords
             .AsNoTracking()
-            .Where(item => item.UserId == userId);
+            .Where(item => item.UserId == userId && item.Feature.StartsWith("ats-"));
         if (windowStart.HasValue)
         {
             query = query.Where(item => item.ReservedAt >= windowStart.Value);
@@ -80,31 +87,36 @@ public sealed class SubscriptionService(
             item => item.Status == AiUsageStatus.Reserved
                 && item.ReservedAt >= now.AddMinutes(-10),
             cancellationToken);
+        var resumeBuilds = await dbContext.ResumeBuildUsageRecords
+            .AsNoTracking()
+            .CountAsync(item => item.UserId == userId, cancellationToken);
 
         return new SubscriptionSnapshot(
             isPro ? SubscriptionTier.Pro : SubscriptionTier.Free,
             isPro,
             subscription?.ProExpiresAt,
-            isPro ? Settings.ProMonthlyAiLimit : Settings.FreeAiTrialLimit,
+            isPro ? Settings.ProAtsAnalysisLimit : Settings.FreeAtsAnalysisLimit,
             used,
             reserved,
+            Settings.FreeResumeBuildLimit,
+            resumeBuilds,
             windowStart);
     }
 
-    public Task<AiUsageReservation> TryReserveAiUseAsync(
+    public Task<AtsUsageReservation> TryReserveAtsAnalysisAsync(
         string userId,
         string feature,
         int promptCharacters,
         CancellationToken cancellationToken = default) =>
         quotaGate.RunAsync(
-            AiQuotaResource,
+            AtsQuotaResource,
             userId,
             async operationCancellationToken =>
             {
                 var snapshot = await GetSnapshotAsync(userId, operationCancellationToken);
-                if (snapshot.AiRemaining <= 0)
+                if (snapshot.AtsAnalysesRemaining <= 0)
                 {
-                    return new AiUsageReservation(false, snapshot);
+                    return new AtsUsageReservation(false, snapshot);
                 }
 
                 var record = new AiUsageRecord
@@ -117,11 +129,11 @@ public sealed class SubscriptionService(
                 };
                 dbContext.AiUsageRecords.Add(record);
                 await dbContext.SaveChangesAsync(operationCancellationToken);
-                return new AiUsageReservation(true, snapshot, record.Id);
+                return new AtsUsageReservation(true, snapshot, record.Id);
             },
             cancellationToken);
 
-    public async Task CompleteAiUseAsync(
+    public async Task CompleteAtsAnalysisAsync(
         long usageRecordId,
         bool succeeded,
         int responseCharacters,
@@ -142,6 +154,40 @@ public sealed class SubscriptionService(
         record.Model = string.IsNullOrWhiteSpace(model) ? null : Normalize(model, 80);
         await dbContext.SaveChangesAsync(cancellationToken);
     }
+
+    public Task<ResumeBuildEntitlement> TryConsumeResumeBuildAsync(
+        string userId,
+        string? templateId,
+        CancellationToken cancellationToken = default) =>
+        quotaGate.RunAsync(
+            ResumeBuildQuotaResource,
+            userId,
+            async operationCancellationToken =>
+            {
+                var snapshot = await GetSnapshotAsync(userId, operationCancellationToken);
+                if (snapshot.IsPro)
+                {
+                    return new ResumeBuildEntitlement(true, snapshot);
+                }
+
+                if (snapshot.ResumeBuildsRemaining <= 0)
+                {
+                    return new ResumeBuildEntitlement(false, snapshot);
+                }
+
+                dbContext.ResumeBuildUsageRecords.Add(new ResumeBuildUsageRecord
+                {
+                    UserId = userId,
+                    CreatedAt = timeProvider.GetUtcNow(),
+                    TemplateId = NormalizeOptional(templateId, 40)
+                });
+                await dbContext.SaveChangesAsync(operationCancellationToken);
+                return new ResumeBuildEntitlement(true, snapshot with
+                {
+                    ResumeBuildUsed = snapshot.ResumeBuildUsed + 1
+                });
+            },
+            cancellationToken);
 
     public Task<UpgradeSubmissionResult> SubmitUpgradeRequestAsync(
         string userId,

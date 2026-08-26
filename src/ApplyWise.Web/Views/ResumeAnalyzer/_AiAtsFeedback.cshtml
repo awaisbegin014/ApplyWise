@@ -1,0 +1,24 @@
+@model ApplyWise.Web.Services.Ai.AiAtsFeedback
+
+<section class="aw-ra-panel aw-ai-ats-feedback" aria-labelledby="ai-ats-feedback-title">
+    <div class="aw-ra-panel-heading">
+        <div><span class="aw-kicker">Gemini explanation</span><h3 id="ai-ats-feedback-title">What your score means</h3><p>@Model.Overview</p></div>
+        <span class="aw-plan-pill is-pro">AI</span>
+    </div>
+    <div class="aw-ai-ats-grid">
+        <div><h4>Strong evidence</h4><ul>@foreach (var strength in Model.Strengths) { <li>@strength</li> }</ul></div>
+        <div><h4>Missing or unclear evidence</h4>@if (Model.MissingEvidence.Count == 0) { <p>No additional evidence gap was identified.</p> } else { <ul>@foreach (var item in Model.MissingEvidence) { <li>@item</li> }</ul> }</div>
+    </div>
+    <div class="aw-ai-ats-actions">
+        <h4>Improve these first</h4>
+        @foreach (var improvement in Model.PriorityImprovements)
+        {
+            <article><span>@improvement.ResumeSection</span><div><strong>@improvement.Title</strong><p>@improvement.WhyItMatters</p><small><b>Action:</b> @improvement.RecommendedAction</small></div></article>
+        }
+    </div>
+    @if (!string.IsNullOrWhiteSpace(Model.JobFitSummary))
+    {
+        <p class="aw-ai-job-fit"><strong>Job-fit explanation:</strong> @Model.JobFitSummary</p>
+    }
+    <p class="aw-ra-compact-note">@Model.TruthfulnessNote Review every suggestion and add information only when it is accurate.</p>
+</section>

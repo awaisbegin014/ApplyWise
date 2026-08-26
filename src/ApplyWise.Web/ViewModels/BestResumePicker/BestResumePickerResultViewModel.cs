@@ -1,3 +1,5 @@
+using ApplyWise.Web.Services.Ai;
+
 namespace ApplyWise.Web.ViewModels.BestResumePicker;
 
 public sealed record BestResumePickerResultViewModel(
@@ -11,6 +13,7 @@ public sealed record BestResumePickerResultViewModel(
     bool HasDetectedSkills,
     IReadOnlyList<ComparedResumeViewModel> ComparedResumes)
 {
+    public AiAtsFeedback? AiFeedback { get; init; }
     public ComparedResumeViewModel? RecommendedResume =>
         ComparedResumes.FirstOrDefault(resume => resume.IsRecommended);
 }

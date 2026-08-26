@@ -153,6 +153,7 @@ public sealed class BestResumePickerService(
             {
                 unreadable.Add(new ComparedResumeResult(
                     resume.Id,
+                    null,
                     resume.VersionName,
                     resume.OriginalFileName,
                     null,
@@ -208,6 +209,7 @@ public sealed class BestResumePickerService(
         var comparedResults = ranked
             .Select((item, index) => new ComparedResumeResult(
                 item.Resume.Id,
+                item.Stored.Analysis.Id,
                 item.Resume.VersionName,
                 item.Resume.OriginalFileName,
                 item.Result.MatchScore,

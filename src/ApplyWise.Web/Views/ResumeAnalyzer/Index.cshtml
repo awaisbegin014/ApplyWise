@@ -1,106 +1,129 @@
 @model ApplyWise.Web.ViewModels.ResumeAnalyzer.AnalyzerIndexViewModel
 @{
-    ViewData["Title"] = "Resume Tools";
+    ViewData["Title"] = "ATS & Job Match";
     var hasResumes = Model.AvailableResumes.Count > 0;
-    var isJobMode = string.Equals(Model.Mode, "job", StringComparison.OrdinalIgnoreCase);
+    var canCompare = Model.AvailableResumes.Count > 1;
+    var subscription = Model.Subscription!;
 }
 
 @section Styles {
     <link rel="stylesheet" href="~/css/resume-analyzer.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/subscriptions-ai.css" asp-append-version="true" />
 }
 
 <div class="aw-page aw-ra-page aw-fade-in">
     <section class="aw-tool-hero aw-slide-up">
-        @if (isJobMode)
-        {
-            <div>
-                <span class="aw-kicker"><svg class="ui-icon" aria-hidden="true"><use href="#i-match" /></svg>Job-specific review</span>
-                <h1>See how well your resume fits a role.</h1>
-                <p>Choose a saved resume and paste the real job description to find missing requirements and weak evidence.</p>
-            </div>
-        }
-        else
-        {
-            <div>
-                <span class="aw-kicker"><svg class="ui-icon" aria-hidden="true"><use href="#i-file" /></svg>ATS resume check</span>
-                <h1>Upload your resume. See what is missing.</h1>
-                <p>No job description needed. Get a readiness estimate, document checks, missing-section checks, and clear improvement guidance.</p>
-            </div>
-        }
+        <div>
+            <span class="aw-kicker"><svg class="ui-icon" aria-hidden="true"><use href="#i-match" /></svg>ATS + Gemini guidance</span>
+            <h1>One resume check. One clear answer.</h1>
+            <p>Check general ATS readiness, match one resume to a job, or compare every saved version to find the strongest fit.</p>
+        </div>
+        <aside class="aw-ai-quota-card" aria-label="ATS report allowance">
+            <span class="aw-plan-pill @(subscription.IsPro ? "is-pro" : null)">@(subscription.IsPro ? "Pro" : "Free")</span>
+            <strong>@subscription.AtsAnalysesRemaining of @subscription.AtsAnalysisLimit reports left</strong>
+            <small>@(subscription.IsPro ? "Current Pro cycle" : "Lifetime free allowance")</small>
+        </aside>
     </section>
 
-    <partial name="_AnalyzerTabs" model="Model.Mode" />
-
-    @if (isJobMode)
+    @if (TempData["AnalysisError"] is string analysisError)
     {
-        <div class="aw-slide-up">
-            <section class="aw-panel aw-analyzer-form">
-                @if (!hasResumes)
-                {
-                    <div class="aw-inline-notice"><span class="aw-stat-icon"><svg class="ui-icon"><use href="#i-file" /></svg></span><div><strong>Your resume library is empty</strong><p>Upload a resume from the ATS Resume Check tab first.</p></div><a class="btn btn-sm btn-primary" asp-action="Index" asp-route-mode="ats">Upload resume</a></div>
-                }
+        <div class="alert app-alert" role="alert">@analysisError <a asp-controller="Subscriptions" asp-action="Index">View Pro</a></div>
+    }
+    @if (TempData["AiFeedbackNotice"] is string aiNotice)
+    {
+        <div class="aw-inline-notice aw-notice-warning" role="status"><div><strong>AI explanation notice</strong><p>@aiNotice</p></div></div>
+    }
+    @if (!Model.AiConfigured)
+    {
+        <div class="aw-inline-notice aw-notice-warning" role="status"><div><strong>Gemini feedback is temporarily unavailable</strong><p>The evidence-based score still works, but the plain-language AI explanation will not appear.</p></div></div>
+    }
 
-                <div class="aw-section-heading"><div><span class="aw-kicker">Job match</span><h3>Compare this resume with a role</h3><p>Use the complete job description so the report can check skills, responsibilities, and qualifications.</p></div><span class="aw-count-badge">1 resume</span></div>
-                <form asp-action="AnalyzePastedRequirements" method="post" class="aw-guided-form">
-                    <div asp-validation-summary="ModelOnly" class="validation-summary" role="alert"></div>
-                    <label class="aw-field">
-                        <span class="aw-field-label"><b>1</b><span><strong>Resume to test</strong><small>Pick the version you would send for this role.</small></span></span>
-                        <select asp-for="Pasted.ResumeId" asp-items="Model.AvailableResumes" class="form-select" disabled="@(!hasResumes)"><option value="">Select a resume</option></select>
-                        <span asp-validation-for="Pasted.ResumeId" class="field-validation-error"></span>
-                    </label>
-                    <label class="aw-field">
-                        <span class="aw-field-label"><b>2</b><span><strong>Job description</strong><small>Paste the original responsibilities, skills, and qualifications.</small></span></span>
-                        <textarea asp-for="Pasted.JobRequirements" class="form-control requirements-textarea" rows="11" minlength="30" maxlength="8000" required placeholder="Paste the complete job description here..."></textarea>
-                        <span class="aw-textarea-meta"><small>Required for Job Match</small><small>30–8,000 characters</small></span>
-                        <span asp-validation-for="Pasted.JobRequirements" class="field-validation-error"></span>
-                    </label>
-                    <button class="btn btn-primary btn-analyze" type="submit" disabled="@(!hasResumes)"><svg class="ui-icon"><use href="#i-match" /></svg>Check job match <span>&rarr;</span></button>
-                </form>
-            </section>
-
+    <section class="aw-panel aw-analyzer-form aw-ats-upload-panel aw-slide-up">
+        <div class="aw-section-heading">
+            <div><span class="aw-kicker">New document</span><h2>Upload and check a resume</h2><p>Use a readable PDF or DOCX. ApplyWise saves it privately and checks structure, evidence, sections, and readability.</p></div>
+            <span class="aw-count-badge">PDF or DOCX · 5 MB max</span>
         </div>
+        <form asp-action="AnalyzeAtsUpload" method="post" enctype="multipart/form-data" class="aw-guided-form aw-ats-upload-form">
+            <div asp-validation-summary="ModelOnly" class="validation-summary" role="alert"></div>
+            <label class="aw-ats-dropzone" asp-for="Upload.ResumeFile">
+                <span class="aw-ats-file-icon" aria-hidden="true"><svg class="ui-icon"><use href="#i-file" /></svg></span>
+                <span><strong data-ats-file-name>Choose your resume</strong><small data-ats-file-help>Scanned image-only and password-protected files cannot be analyzed.</small></span>
+                <span class="btn btn-secondary-soft btn-sm">Browse file</span>
+                <input asp-for="Upload.ResumeFile" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" data-ats-upload-input />
+            </label>
+            <span asp-validation-for="Upload.ResumeFile" class="field-validation-error"></span>
+            <p class="aw-ra-compact-note">By selecting “Analyze resume,” you request Gemini feedback. The extracted resume text is sent securely for this report; ApplyWise’s deterministic engine—not Gemini—sets the score.</p>
+            <button class="btn btn-primary btn-analyze" type="submit" disabled="@(subscription.AtsAnalysesRemaining == 0)"><svg class="ui-icon"><use href="#i-match" /></svg>Analyze resume <span>&rarr;</span></button>
+        </form>
+    </section>
+
+    @if (hasResumes)
+    {
+        <section class="aw-panel aw-analyzer-form aw-slide-up" aria-labelledby="saved-analysis-heading">
+            <div class="aw-section-heading">
+                <div><span class="aw-kicker">Saved resumes</span><h2 id="saved-analysis-heading">ATS check or job match</h2><p>Select one resume. Leave the job description blank for general ATS readiness, or paste it for job-specific evidence and fit.</p></div>
+                <span class="aw-count-badge">@Model.AvailableResumes.Count saved</span>
+            </div>
+            <form asp-action="AnalyzePastedRequirements" method="post" class="aw-guided-form">
+                <div asp-validation-summary="ModelOnly" class="validation-summary" role="alert"></div>
+                <label class="aw-field">
+                    <span class="aw-field-label"><b>1</b><span><strong>Resume</strong><small>Choose the version you want to assess.</small></span></span>
+                    <select asp-for="Pasted.ResumeId" asp-items="Model.AvailableResumes" class="form-select"><option value="">Select a resume</option></select>
+                    <span asp-validation-for="Pasted.ResumeId" class="field-validation-error"></span>
+                </label>
+                <label class="aw-field">
+                    <span class="aw-field-label"><b>2</b><span><strong>Job description</strong><small>Optional for one-resume ATS; required to compare all versions.</small></span></span>
+                    <textarea asp-for="Pasted.JobRequirements" class="form-control requirements-textarea" rows="10" minlength="30" maxlength="8000" placeholder="Optional: paste the complete responsibilities, skills, tools, qualifications, and experience requirements..."></textarea>
+                    <span class="aw-textarea-meta"><small>Blank = general ATS report</small><small>30–8,000 characters for job match</small></span>
+                    <span asp-validation-for="Pasted.JobRequirements" class="field-validation-error"></span>
+                </label>
+                <p class="aw-ra-compact-note">Gemini receives the selected resume, optional job description, and ApplyWise’s evidence-based score only to explain strengths and improvements. It cannot change the score.</p>
+                <div class="aw-detail-actions">
+                    <button class="btn btn-primary btn-analyze" type="submit" disabled="@(subscription.AtsAnalysesRemaining == 0)"><svg class="ui-icon"><use href="#i-match" /></svg>Analyze selected resume <span>&rarr;</span></button>
+                    @if (canCompare)
+                    {
+                        <button class="btn btn-secondary-soft" type="submit" formaction="@Url.Action("CompareAllResumes", "ResumeAnalyzer")" disabled="@(subscription.AtsAnalysesRemaining == 0)">Compare all and pick the best</button>
+                    }
+                </div>
+            </form>
+        </section>
     }
     else
     {
-        <div class="aw-slide-up">
-            <section class="aw-panel aw-analyzer-form aw-ats-upload-panel">
-                <div class="aw-section-heading">
-                    <div><span class="aw-kicker">Start a new check</span><h3>Add your resume</h3><p>We will save it privately, inspect its structure, extract its text, and create an actionable readiness report.</p></div>
-                    <span class="aw-count-badge">PDF or DOCX · 5 MB max</span>
-                </div>
+        <section class="aw-panel aw-empty-state"><span class="empty-icon" aria-hidden="true"><svg class="ui-icon"><use href="#i-file" /></svg></span><h2>No saved resumes yet</h2><p>Upload one above or create a PDF in Resume Builder.</p></section>
+    }
 
-                <form asp-action="AnalyzeAtsUpload" method="post" enctype="multipart/form-data" class="aw-guided-form aw-ats-upload-form">
-                    <div asp-validation-summary="ModelOnly" class="validation-summary" role="alert"></div>
-                    <label class="aw-ats-dropzone" asp-for="Upload.ResumeFile">
-                        <span class="aw-ats-file-icon" aria-hidden="true"><svg class="ui-icon"><use href="#i-file" /></svg></span>
-                        <span><strong data-ats-file-name>Choose your PDF or DOCX resume</strong><small data-ats-file-help>Use a readable, unlocked document. Scanned image-only files cannot be analyzed.</small></span>
-                        <span class="btn btn-secondary-soft btn-sm">Browse file</span>
-                        <input asp-for="Upload.ResumeFile" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" aria-describedby="ats-upload-help" data-ats-upload-input />
-                    </label>
-                    <small id="ats-upload-help" class="aw-ats-upload-help">PDF or DOCX · maximum 5 MB · the file name becomes the saved resume name</small>
-                    <span asp-validation-for="Upload.ResumeFile" class="field-validation-error"></span>
-                    <button class="btn btn-primary btn-analyze" type="submit"><svg class="ui-icon"><use href="#i-match" /></svg>Check my resume <span>&rarr;</span></button>
-                </form>
-            </section>
-
-        </div>
-
-        @if (hasResumes)
-        {
-            <section class="aw-panel aw-ats-saved-panel aw-slide-up" aria-labelledby="saved-ats-heading">
-                <div class="aw-section-heading">
-                    <div><span class="aw-kicker">Already in your library</span><h3 id="saved-ats-heading">Check a saved resume</h3><p>Run a fresh ATS-only report without uploading the same file again.</p></div>
-                </div>
-                <form asp-action="AnalyzeSavedResumeAts" method="post" class="aw-ats-saved-form" data-saved-ats-form>
-                    <label class="aw-field">
-                        <span class="visually-hidden">Saved resume</span>
-                        <select asp-for="SavedAts.ResumeId" asp-items="Model.AvailableResumes" class="form-select"><option value="">Select a resume</option></select>
-                        <span asp-validation-for="SavedAts.ResumeId" class="field-validation-error"></span>
-                    </label>
-                    <button class="btn btn-secondary-soft" type="submit" data-saved-ats-submit>Check saved resume</button>
-                </form>
-            </section>
-        }
+    @if (Model.Comparison is not null)
+    {
+        var result = Model.Comparison;
+        var recommended = result.RecommendedResume;
+        <section class="aw-picker-results aw-slide-up" aria-labelledby="picker-results-title">
+            <div class="aw-results-heading"><span class="aw-kicker">Resume comparison</span><h2 id="picker-results-title">Best fit for this job</h2><p>@result.ReadableResumeCount of @result.ComparedResumeCount saved resumes were readable and ranked.</p></div>
+            @if (recommended is not null)
+            {
+                <article class="aw-panel aw-recommendation-card">
+                    <div class="aw-recommendation-copy"><span class="aw-status aw-status-success">Recommended</span><h3>@recommended.VersionName</h3><p>@result.RecommendationReason</p><small>@recommended.OriginalFileName</small><div class="aw-progress aw-progress-large" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@recommended.MatchScore"><i style="--aw-progress:@recommended.MatchScore%"></i></div></div>
+                    <div class="aw-recommendation-score"><strong>@recommended.MatchScore%</strong><small>Fit estimate</small></div>
+                </article>
+            }
+            @if (result.AiFeedback is not null)
+            {
+                <partial name="_AiAtsFeedback" model="result.AiFeedback" />
+            }
+            <div class="aw-section-heading aw-ranking-heading"><div><span class="aw-kicker">Full ranking</span><h3>How every version compares</h3></div></div>
+            <div class="aw-ranked-list">
+                @foreach (var resume in result.ComparedResumes)
+                {
+                    <article class="aw-card aw-ranked-card @(resume.IsRecommended ? "is-recommended" : null)">
+                        <span class="aw-rank">@(resume.Rank.HasValue ? $"#{resume.Rank}" : "-")</span>
+                        <div class="aw-ranked-main"><div class="aw-ranked-heading"><div><h3>@resume.VersionName @if (resume.IsRecommended) { <span class="aw-status aw-status-success">Recommended</span> }</h3><p>@resume.OriginalFileName</p></div><strong class="aw-rank-score">@(resume.MatchScore.HasValue ? $"{resume.MatchScore}%" : "N/A")</strong></div>
+                            @if (resume.AnalysisError is not null) { <p class="resume-analysis-error">@resume.AnalysisError</p> }
+                            else { <div class="aw-ranked-skills"><div><span>Matched</span><div class="aw-skill-cloud">@foreach (var skill in resume.MatchedKeywords.Take(6)) { <span class="aw-chip aw-chip-green">@skill</span> }</div></div><div><span>Missing or unclear</span><div class="aw-skill-cloud">@foreach (var skill in resume.MissingKeywords.Take(6)) { <span class="aw-chip aw-chip-amber">@skill</span> }</div></div></div> }
+                        </div>
+                    </article>
+                }
+            </div>
+        </section>
     }
 
     @if (Model.LatestResult is not null)
@@ -112,8 +135,4 @@
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
     <script src="~/js/resume-analyzer.js" asp-append-version="true"></script>
-}
-@if (TempData["AnalysisError"] is string analysisError)
-{
-    <div class="alert app-alert" role="alert">@analysisError</div>
 }

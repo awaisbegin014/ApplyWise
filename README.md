@@ -29,7 +29,7 @@ Most job searches become fragmented across job boards, email, spreadsheets, cale
 4. Record the resume actually submitted for each application.
 5. Track application outcomes, follow-ups, deadlines, and source patterns.
 
-Resume matching remains intentionally explainable and local. Optional AI bullet coaching sends only the user-selected bullet and optional job context to Gemini after explicit consent; AI never calculates the ATS score and its suggestions never guarantee an interview.
+Resume scoring remains deterministic, explainable, and profession-neutral. When an ATS report is requested, common contact details are redacted and Gemini receives the extracted resume text, optional job description, and fixed score breakdown only to explain strengths, missing evidence, and improvements. Gemini never calculates or changes the score, and no result guarantees an interview.
 
 ## Product tour
 
@@ -160,7 +160,7 @@ Production values must come from environment variables or a host secret store. N
 | `Google:*` | `Google__ClientId`, `Google__ClientSecret` | Optional Google sign-in |
 | `Google:Gmail*` | `Google__GmailImportEnabled`, `Google__GmailAutoSyncEnabled` and bounded sync settings | Optional Gmail import controls |
 | `Gemini:*` | `Gemini__Enabled`, `Gemini__ApiKey`, `Gemini__Model` | Optional server-side Gemini resume coach; keep the API key in the secret store |
-| `Subscriptions:*` | `Subscriptions__FreeAiTrialLimit`, `Subscriptions__ProMonthlyAiLimit`, `Subscriptions__ProPrice`, `Subscriptions__Currency`, `Subscriptions__PaymentInstructions` | Freemium limits and manually verified Pro plan presentation |
+| `Subscriptions:*` | `Subscriptions__FreeAtsAnalysisLimit`, `Subscriptions__ProAtsAnalysisLimit`, `Subscriptions__FreeResumeBuildLimit`, `Subscriptions__ProPrice`, `Subscriptions__Currency`, `Subscriptions__PaymentInstructions` | ATS/report limits, free resume-export allowance, and manually verified Pro plan presentation |
 | `ResumeStorage:RootPath` | `ResumeStorage__RootPath` | Private resume directory |
 | `DataProtection:*` | `DataProtection__KeysPath`, certificate path/password, previous certificates | Persistent encryption material |
 | `Performance:SlowRequestThresholdMs` | `Performance__SlowRequestThresholdMs` | Slow-request warning threshold |
