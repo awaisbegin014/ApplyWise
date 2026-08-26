@@ -24,7 +24,6 @@ public interface IDashboardReadService
 public sealed class DashboardReadService(ApplicationDbContext dbContext) : IDashboardReadService
 {
     public const int MaxApplicationRows = 500;
-    public const int MaxInterviewRows = 250;
     public const int MaxAnalysisRows = 200;
     public const int MaxResumeRows = 100;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -34,14 +33,12 @@ public sealed class DashboardReadService(ApplicationDbContext dbContext) : IDash
         string displayName,
         CancellationToken cancellationToken = default)
     {
-        var now = DateTimeOffset.UtcNow;
         var localNow = DateTimeOffset.Now;
         var today = DateOnly.FromDateTime(localNow.DateTime);
         var todayStart = new DateTimeOffset(localNow.Date, localNow.Offset).ToUniversalTime();
-        var tomorrowStart = todayStart.AddDays(1);
 
         // EF Core does not allow concurrent operations on one DbContext. These
-        // four projections intentionally replace the former collection of small round trips.
+        // three projections intentionally replace the former collection of small round trips.
         var applications = await dbContext.JobApplications.AsNoTracking()
             .Where(application => application.UserId == userId)
             .OrderByDescending(application => application.UpdatedAt)
@@ -66,30 +63,6 @@ public sealed class DashboardReadService(ApplicationDbContext dbContext) : IDash
                 application => application.UserId == userId,
                 cancellationToken)
             : applications.Count;
-
-        var interviews = await dbContext.Interviews.AsNoTracking()
-            .Where(interview => interview.UserId == userId)
-            .OrderByDescending(interview => interview.ScheduledAt)
-            .Select(interview => new InterviewRow(
-                interview.Id,
-                interview.JobApplicationId,
-                interview.JobApplication!.CompanyName,
-                interview.JobApplication.JobTitle,
-                interview.InterviewType,
-                interview.Status,
-                interview.ScheduledAt))
-            .Take(MaxInterviewRows + 1)
-            .ToListAsync(cancellationToken);
-        var interviewsOverflowed = interviews.Count > MaxInterviewRows;
-        if (interviewsOverflowed)
-        {
-            interviews.RemoveAt(MaxInterviewRows);
-        }
-        var totalInterviewCount = interviewsOverflowed
-            ? await dbContext.Interviews.CountAsync(
-                interview => interview.UserId == userId,
-                cancellationToken)
-            : interviews.Count;
 
         var analyses = await dbContext.ResumeAnalyses.AsNoTracking()
             .Where(analysis => analysis.UserId == userId)
@@ -141,40 +114,15 @@ public sealed class DashboardReadService(ApplicationDbContext dbContext) : IDash
             : fitAnalyses.Length == 0
                 ? 0
                 : Math.Round(fitAnalyses.Average(analysis => analysis.MatchScore), 1);
-        var interviewedApplicationIds = interviews
-            .Select(interview => interview.JobApplicationId)
+        var interviewedApplicationIds = applications
+            .Where(application => application.Status == ApplicationStatus.Interview)
+            .Select(application => application.Id)
             .ToHashSet();
         var bestResume = FindBestResume(resumes, currentAnalyses, applications, interviewedApplicationIds);
         var funnel = applicationsOverflowed
             ? await BuildExactFunnelAsync(userId, cancellationToken)
             : BuildFunnel(applications, interviewedApplicationIds);
 
-        var upcomingInterviews = interviews
-            .Where(interview => interview.ScheduledAt >= now
-                && interview.Status is InterviewStatus.Scheduled or InterviewStatus.Rescheduled)
-            .OrderBy(interview => interview.ScheduledAt)
-            .ToArray();
-        var upcomingInterviewCount = interviewsOverflowed
-            ? await dbContext.Interviews.CountAsync(
-                interview => interview.UserId == userId
-                    && interview.ScheduledAt >= now
-                    && (interview.Status == InterviewStatus.Scheduled
-                        || interview.Status == InterviewStatus.Rescheduled),
-                cancellationToken)
-            : upcomingInterviews.Length;
-        var todayInterviews = interviews
-            .Where(interview => interview.ScheduledAt >= todayStart
-                && interview.ScheduledAt < tomorrowStart
-                && interview.Status != InterviewStatus.Cancelled)
-            .Select(interview => new DashboardActionItemViewModel(
-                "Interview",
-                interview.InterviewType.GetDisplayName(),
-                interview.JobTitle + " at " + interview.CompanyName,
-                interview.ScheduledAt,
-                "Interviews",
-                "Details",
-                interview.Id))
-            .ToArray();
         var deadlineSortAt = todayStart.AddHours(23).AddMinutes(59);
         var todayDeadlines = applications
             .Where(application => application.Deadline == today)
@@ -193,9 +141,7 @@ public sealed class DashboardReadService(ApplicationDbContext dbContext) : IDash
             DisplayName = displayName,
             CurrentTime = localNow,
             TotalApplications = totalApplications,
-            TotalInterviewCount = totalInterviewCount,
             AverageMatchScore = Math.Round(averageMatchScore, 1),
-            UpcomingInterviewCount = upcomingInterviewCount,
             Funnel = funnel,
             BestResumeVersionName = bestResume?.VersionName,
             BestResumeScore = bestResume?.AverageMatchScore ?? 0,
@@ -220,15 +166,6 @@ public sealed class DashboardReadService(ApplicationDbContext dbContext) : IDash
                     analysis.CreatedAt))
                 .ToArray(),
             TopSkillGaps = BuildSkillGapTrends(currentAnalyses).Take(4).ToArray(),
-            UpcomingInterviews = upcomingInterviews
-                .Take(5)
-                .Select(interview => new DashboardInterviewItemViewModel(
-                    interview.Id,
-                    interview.CompanyName,
-                    interview.JobTitle,
-                    interview.InterviewType,
-                    interview.ScheduledAt))
-                .ToArray(),
             UpcomingDeadlines = applications
                 .Where(application => application.Deadline >= today)
                 .OrderBy(application => application.Deadline)
@@ -239,12 +176,11 @@ public sealed class DashboardReadService(ApplicationDbContext dbContext) : IDash
                     application.JobTitle,
                     application.Deadline!.Value))
                 .ToArray(),
-            TodayActions = todayInterviews
-                .Concat(todayDeadlines)
+            TodayActions = todayDeadlines
                 .OrderBy(item => item.SortAt)
                 .Take(8)
                 .ToArray(),
-            TodayActionCount = todayInterviews.Length + todayDeadlines.Length
+            TodayActionCount = todayDeadlines.Length
         };
     }
 
@@ -279,12 +215,7 @@ public sealed class DashboardReadService(ApplicationDbContext dbContext) : IDash
             .GroupBy(application => application.Status)
             .Select(group => new { Status = group.Key, Count = group.Count() })
             .ToDictionaryAsync(item => item.Status, item => item.Count, cancellationToken);
-        var interviewCount = await dbContext.JobApplications.AsNoTracking()
-            .CountAsync(
-                application => application.UserId == userId
-                    && (application.Status == ApplicationStatus.Interview
-                        || application.Interviews.Any(interview => interview.UserId == userId)),
-                cancellationToken);
+        var interviewCount = statusCounts.GetValueOrDefault(ApplicationStatus.Interview);
 
         int Count(ApplicationStatus status) => statusCounts.GetValueOrDefault(status);
         return new ApplicationFunnelResult(
@@ -441,15 +372,6 @@ public sealed class DashboardReadService(ApplicationDbContext dbContext) : IDash
         DateOnly? Deadline,
         DateTimeOffset CreatedAt,
         DateTimeOffset UpdatedAt);
-
-    private sealed record InterviewRow(
-        int Id,
-        int JobApplicationId,
-        string CompanyName,
-        string JobTitle,
-        InterviewType InterviewType,
-        InterviewStatus Status,
-        DateTimeOffset ScheduledAt);
 
     private sealed record AnalysisRow(
         int Id,

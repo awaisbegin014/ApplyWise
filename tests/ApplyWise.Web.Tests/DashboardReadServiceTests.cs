@@ -102,18 +102,15 @@ public sealed class DashboardReadServiceTests
 
         Assert.Equal("Awais", result.DisplayName);
         Assert.Equal(2, result.TotalApplications);
-        Assert.Equal(1, result.TotalInterviewCount);
-        Assert.Equal(1, result.UpcomingInterviewCount);
         Assert.Equal(82, result.AverageMatchScore);
         Assert.Equal("Backend", result.BestResumeVersionName);
         Assert.Equal(82, result.BestResumeScore);
         Assert.Equal(2, result.PipelineApplications.Count);
         Assert.DoesNotContain(result.PipelineApplications, item => item.CompanyName == "Private tenant");
-        Assert.Equal(1, result.Funnel.Interview);
+        Assert.Equal(0, result.Funnel.Interview);
         Assert.Equal(1, result.Funnel.Offered);
         Assert.Single(result.TopSkillGaps);
         Assert.Equal("Docker", result.TopSkillGaps[0].SkillName);
-        Assert.Single(result.UpcomingInterviews);
         Assert.Single(result.UpcomingDeadlines);
         Assert.Single(result.RecentAnalyses);
     }

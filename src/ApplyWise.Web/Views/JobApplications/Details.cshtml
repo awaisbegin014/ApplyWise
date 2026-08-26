@@ -1,7 +1,6 @@
 @model ApplyWise.Web.ViewModels.JobApplications.JobApplicationDetailsViewModel
 @{
     ViewData["Title"] = "Application Details";
-    var interviews = Model.Interviews ?? [];
 }
 
 <div class="aw-page aw-fade-in">
@@ -36,14 +35,6 @@
         <section class="aw-panel aw-detail-card aw-slide-up"><div class="aw-section-heading"><div><span class="aw-kicker">Resume choice</span><h3>Resume used</h3></div><span class="aw-stat-icon green"><svg class="ui-icon"><use href="#i-file" /></svg></span></div><strong class="aw-detail-value">@(Model.ResumeVersionName ?? "No resume selected")</strong><p>@(Model.ResumeVersionName is null ? "Choose a version so ApplyWise can track performance." : "This version is linked to the application history.")</p><a asp-controller="BestResumePicker" asp-action="Index" asp-route-jobApplicationId="@Model.Id">Compare resume versions →</a></section>
         <section class="aw-panel aw-detail-card aw-slide-up"><div class="aw-section-heading"><div><span class="aw-kicker">Timing</span><h3>Dates and deadline</h3></div><span class="aw-stat-icon amber"><svg class="ui-icon"><use href="#i-calendar" /></svg></span></div><div class="aw-date-pair"><span><small>Applied</small><strong>@FormatDate(Model.AppliedDate)</strong></span><span><small>Deadline</small><strong>@FormatDate(Model.Deadline)</strong></span></div><p>@DeadlineCopy(Model.Deadline)</p></section>
         <section class="aw-panel aw-detail-card aw-slide-up"><div class="aw-section-heading"><div><span class="aw-kicker">Role snapshot</span><h3>Job details</h3></div><span class="aw-stat-icon purple"><svg class="ui-icon"><use href="#i-briefcase" /></svg></span></div><dl class="aw-mini-details"><div><dt>Source</dt><dd>@Model.Source.GetDisplayName()</dd></div><div><dt>Type</dt><dd>@(Model.JobType?.GetDisplayName() ?? "Not specified")</dd></div><div><dt>Salary</dt><dd>@(Model.SalaryRange ?? "Not specified")</dd></div></dl>@if (Model.JobUrl is not null) { <a href="@Model.JobUrl" target="_blank" rel="noopener noreferrer">Open original listing ↗</a> }</section>
-    </div>
-
-    <div class="aw-detail-grid">
-        <section class="aw-panel aw-slide-up">
-            <div class="aw-section-heading"><div><span class="aw-kicker">Interview plan</span><h3>Interviews</h3><p>Prep and outcomes connected to this role.</p></div><a class="btn btn-secondary-soft btn-sm" asp-controller="Interviews" asp-action="Create" asp-route-jobApplicationId="@Model.Id">+ Add interview</a></div>
-            @if (interviews.Count == 0) { <div class="aw-compact-state"><span class="aw-stat-icon purple"><svg class="ui-icon"><use href="#i-calendar" /></svg></span><div><strong>No interviews yet</strong><p>Add one when the conversation is scheduled.</p></div></div> }
-            else { <div class="aw-action-stack">@foreach (var interview in interviews) { <a class="aw-action-card" asp-controller="Interviews" asp-action="Details" asp-route-id="@interview.Id"><span class="aw-action-mark purple"><svg class="ui-icon"><use href="#i-calendar" /></svg></span><span><b>@interview.InterviewType.GetDisplayName()</b><small>@interview.Status.GetDisplayName()</small></span><time>@interview.ScheduledAt.ToLocalTime().ToString("MMM d, h:mm tt")</time></a> }</div> }
-        </section>
     </div>
 
     <div class="aw-detail-grid aw-detail-grid-two">

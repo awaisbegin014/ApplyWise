@@ -35,7 +35,8 @@ ResumeStorage__RootPath=<absolute private persistent directory>
 DataProtection__KeysPath=<absolute persistent key directory>
 DataProtection__CertificatePath=<absolute path to a mounted PFX or encrypted PEM>
 DataProtection__CertificatePassword=<certificate password>
-Google__GmailImportEnabled=false
+Google__GmailImportEnabled=true
+Google__GmailAutoSyncEnabled=true
 ```
 
 Use absolute paths below the site's sibling `Private` directory for resumes, Data Protection keys, and the PFX certificate—for example, `D:\Sites\site12345\Private\ApplyWise\...` using the actual physical path shown for your Monster site. Production rejects any of these paths beneath the application/Web Deploy root because `target-delete` could erase them. Upload the certificate to `Private` through Monster WebFTP and back up the encrypted key directory; it protects authentication cookies, protected Gmail credentials, and account-recovery tokens.
@@ -46,7 +47,7 @@ Mark secrets as deployment settings and keep them out of `appsettings.json`, she
 
 Owner identities must be provisioned through the offline `--provision-owner` command documented in [OPERATIONS.md](OPERATIONS.md); public registration intentionally rejects every configured owner address. Before first launch, audit the identity database for pre-existing rows using an owner address and never complete an account whose origin cannot be proven. The command confirms the identity, verifies live TOTP enrollment, assigns the role, and produces recovery codes. On startup, ApplyWise synchronizes the `Admin` role to confirmed allowlisted identities and removes access from administrators no longer listed. The owner console is available at `/admin`, and the policy requires second-factor evidence from the current sign-in session. Add more owners with `AdminAccess__Emails__1`, `AdminAccess__Emails__2`, and so on, using the same procedure.
 
-Google sign-in and Gmail import are disabled by default. Google credentials enable basic sign-in only. Keep `Google__GmailImportEnabled=false` until the restricted Gmail scope is approved; then rotate the development OAuth secret, configure the consent screen, register `/signin-google` and `/signin-google-gmail`, and explicitly enable Gmail import.
+The production release enables Google sign-in, read-only Gmail import, and scheduled sync. Before approving deployment, complete verification for the restricted Gmail scope, rotate any development OAuth secret, configure the production consent screen, and register both `/signin-google` and `/signin-google-gmail` redirect paths. Newly connected inboxes automatically add only high-confidence confirmations; uncertain messages remain in review and users can disable automatic addition from Imports.
 
 ## 3. Apply migrations
 
@@ -77,7 +78,7 @@ For the one-time first rollout of `2026-08-release-hardening-v2`, create two dis
 - Verify static CSS/JavaScript, login/logout, and every protected navigation link.
 - Upload a small text-based demo PDF and confirm it is absent from public static URLs.
 - Create/edit/delete an application and confirm its resume relationship.
-- Run analysis, best-resume selection, interview scheduling, analytics, and scam review.
+- Run analysis, best-resume selection, application tracking, Gmail import, and scam review.
 - Confirm a second account receives 404/no data for the first account's record IDs.
 - Review Monster Control Panel logs without logging resume contents or connection strings.
 - Configure backups, health monitoring, alerts, storage retention, and a rollback plan.

@@ -21,7 +21,6 @@ public sealed class AdminDashboardViewModel
     public int TotalApplications { get; init; }
     public int TotalResumes { get; init; }
     public int TotalAnalyses { get; init; }
-    public int TotalInterviews { get; init; }
     public int TotalContactMessages { get; init; }
     public int UnreadContactMessages { get; init; }
     public int FailedEventsInRange { get; init; }
@@ -46,7 +45,6 @@ public sealed record AdminUserRowViewModel(
     int ResumeCount,
     int AnalysisCount,
     int ApplicationCount,
-    int InterviewCount,
     bool OnboardingCompleted);
 
 public sealed record AdminDailyActivityViewModel(

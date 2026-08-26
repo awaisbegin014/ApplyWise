@@ -108,7 +108,6 @@
         <article class="panel"><span>Applications</span><strong>@Model.TotalApplications</strong></article>
         <article class="panel"><span>Resumes</span><strong>@Model.TotalResumes</strong></article>
         <article class="panel"><span>Analyses</span><strong>@Model.TotalAnalyses</strong></article>
-        <article class="panel"><span>Interviews</span><strong>@Model.TotalInterviews</strong></article>
         <a class="panel admin-contact-object" asp-action="ContactMessages">
             <span>Contact inbox<small>@Model.TotalContactMessages total</small></span>
             <strong>@Model.UnreadContactMessages<small> unread</small></strong>
@@ -185,7 +184,7 @@
                                 <span class="badge @(user.EmailConfirmed ? "badge-success" : "badge-warning")">@(user.EmailConfirmed ? "Confirmed" : "Unconfirmed")</span>
                                 <small class="admin-account-detail">@(user.OnboardingCompleted ? "Onboarded" : "Onboarding incomplete") · @user.SuccessfulLogins login@(user.SuccessfulLogins == 1 ? string.Empty : "s")</small>
                             </td>
-                            <td data-label="Usage"><span class="admin-usage-counts">@user.ResumeCount resumes · @user.AnalysisCount analyses · @user.ApplicationCount applications · @user.InterviewCount interviews</span></td>
+                            <td data-label="Usage"><span class="admin-usage-counts">@user.ResumeCount resumes · @user.AnalysisCount analyses · @user.ApplicationCount applications</span></td>
                             <td data-label="Action"><a class="btn btn-outline-primary btn-sm admin-report-link" asp-action="UserDetails" asp-route-userId="@user.UserId">View report</a></td>
                         </tr>
                     }

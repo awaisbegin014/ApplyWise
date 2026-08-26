@@ -151,7 +151,25 @@ public sealed class ProductionReadinessConfigurationTests
         Assert.Contains("Set-GoogleRuntimeConfiguration $env:ROLLBACK_PUBLISH_PATH", workflow, StringComparison.Ordinal);
         Assert.Contains("Google__ClientId", workflow, StringComparison.Ordinal);
         Assert.Contains("Google__ClientSecret", workflow, StringComparison.Ordinal);
-        Assert.Contains("\"Google__GmailImportEnabled\" = \"false\"", workflow, StringComparison.Ordinal);
+        Assert.Contains("\"Google__GmailImportEnabled\" = \"true\"", workflow, StringComparison.Ordinal);
+        Assert.Contains("\"Google__GmailAutoSyncEnabled\" = \"true\"", workflow, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void New_Gmail_connections_enable_high_confidence_auto_add()
+    {
+        var repositoryRoot = FindRepositoryRoot();
+        var controller = File.ReadAllText(Path.Combine(
+            repositoryRoot,
+            "src",
+            "ApplyWise.Web",
+            "Controllers",
+            "GmailConnectionsController.cs"));
+
+        Assert.Contains(
+            "AutoAddHighConfidenceApplications = true",
+            controller,
+            StringComparison.Ordinal);
     }
 
     private static EmailOptions Copy(

@@ -180,7 +180,7 @@ public sealed class AdminUserReportTests
         Assert.Equal(Now.AddMinutes(-10), result.Account.LastActivityAt);
         Assert.Equal(8, result.Account.SuccessfulLogins);
         Assert.Equal("Candidate Example", Assert.IsType<AdminUserCareerProfileViewModel>(result.Profile).FullName);
-        Assert.Equal(new AdminUserTotalsViewModel(1, 2, 2, 1, 2), result.Totals);
+        Assert.Equal(new AdminUserTotalsViewModel(1, 2, 2, 1), result.Totals);
         Assert.Equal(
             new[] { ApplicationStatus.Applied, ApplicationStatus.Interview },
             result.ApplicationStatusBreakdown.Select(item => item.Status));
@@ -194,7 +194,6 @@ public sealed class AdminUserReportTests
         Assert.Equal(601, Assert.Single(result.Imports.Items).Id);
         Assert.Equal(202, result.Imports.Items[0].CreatedApplicationId);
         Assert.Equal(new[] { 302, 301 }, result.LatestAnalyses.Select(item => item.Id));
-        Assert.Equal(new[] { 502, 501 }, result.LatestInterviews.Select(item => item.Id));
         Assert.Equal("candidate@gmail.test", Assert.IsType<AdminGmailConnectionViewModel>(result.GmailConnection).EmailAddress);
         Assert.Equal(
             new[] { "application.created", "resume.uploaded" },
@@ -245,7 +244,6 @@ public sealed class AdminUserReportTests
         Assert.DoesNotContain(result.Applications.Items, item => item.Id == 202);
         Assert.DoesNotContain(result.Imports.Items, item => item.Id == 402);
         Assert.DoesNotContain(result.LatestAnalyses, item => item.Id is 502 or 503 or 504);
-        Assert.DoesNotContain(result.LatestInterviews, item => item.Id is 602 or 603);
         Assert.DoesNotContain(result.RecentEvents, item => item.Name == "other.event");
 
         var crossLinkedApplication = Assert.Single(
@@ -255,7 +253,6 @@ public sealed class AdminUserReportTests
         Assert.Null(crossLinkedApplication.ResumeVersionName);
         Assert.Null(Assert.Single(result.Imports.Items, item => item.Id == 403).CreatedApplicationId);
         Assert.Equal(501, Assert.Single(result.LatestAnalyses).Id);
-        Assert.Equal(601, Assert.Single(result.LatestInterviews).Id);
     }
 
     [Fact]

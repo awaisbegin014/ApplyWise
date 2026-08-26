@@ -291,7 +291,8 @@ jobs:
             $runtimeValues = [ordered]@{
               "Google__ClientId" = $env:GOOGLE_CLIENT_ID
               "Google__ClientSecret" = $env:GOOGLE_CLIENT_SECRET
-              "Google__GmailImportEnabled" = "false"
+              "Google__GmailImportEnabled" = "true"
+              "Google__GmailAutoSyncEnabled" = "true"
             }
             foreach ($entry in $runtimeValues.GetEnumerator()) {
               $node = @($environmentVariables.environmentVariable) |
@@ -324,7 +325,7 @@ jobs:
 
           Set-GoogleRuntimeConfiguration $env:RELEASE_PUBLISH_PATH
           Set-GoogleRuntimeConfiguration $env:ROLLBACK_PUBLISH_PATH
-          Write-Host "Protected Google sign-in configuration was applied to release and rollback payloads; Gmail import remains disabled."
+          Write-Host "Protected Google sign-in and automatic Gmail import configuration was applied to release and rollback payloads."
 
       - name: Ensure the application pool is running before preflight
         shell: pwsh

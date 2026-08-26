@@ -11,7 +11,8 @@ public sealed class WorkspaceNavigationContractTests
 
         AssertBefore(layout, ">Track</span>", ">Resume</span>");
         AssertBefore(layout, ">Resume</span>", ">Account</span>");
-        AssertBefore(layout, ">Applications</a>", ">Interviews</a>");
+        AssertBefore(layout, ">Applications</a>", ">Imports</a>");
+        Assert.DoesNotContain(">Interviews</a>", layout, StringComparison.Ordinal);
         AssertBefore(layout, ">Resume library</a>", ">Resume builder</a>");
         AssertBefore(layout, ">Profile</a>", ">Settings</a>");
     }
