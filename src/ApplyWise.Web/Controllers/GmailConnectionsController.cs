@@ -31,10 +31,10 @@ public sealed class GmailConnectionsController(
         gmailStateGate ?? new WorkspaceQuotaGate(dbContext);
 
     [HttpGet("failure")]
-    public IActionResult Failure()
+    public IActionResult Failure(
+        [FromQuery(Name = GmailOAuthFailure.QueryParameter)] string? reason)
     {
-        TempData["ImportError"] =
-            "Gmail authorization was cancelled, expired, or opened without a valid connection request. Start again from the Imports page.";
+        TempData["ImportError"] = GmailOAuthFailure.GetUserMessage(reason);
         return RedirectToAction("Index", "ApplicationImports");
     }
 

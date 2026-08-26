@@ -83,6 +83,27 @@
 })();
 
 (() => {
+    document.querySelectorAll('[data-gmail-connect-form]').forEach((form) => {
+        let submitted = false;
+        form.addEventListener('submit', (event) => {
+            if (submitted) {
+                event.preventDefault();
+                return;
+            }
+
+            submitted = true;
+            const button = form.querySelector('[data-gmail-connect-button]');
+            const label = form.querySelector('[data-gmail-connect-label]');
+            if (button) {
+                button.disabled = true;
+                button.setAttribute('aria-busy', 'true');
+            }
+            if (label) label.textContent = 'Opening Google…';
+        });
+    });
+})();
+
+(() => {
     const greeting = document.querySelector('[data-local-greeting]');
     const dashboard = document.querySelector('[data-display-name]');
     if (greeting && dashboard) {
