@@ -340,8 +340,21 @@ if (googleIntegration.IsConfigured)
                 };
                 options.Events.OnRemoteFailure = context =>
                 {
+                    var failureReason = GmailOAuthFailure.Classify(
+                        context.Request.Query["error"].ToString(),
+                        context.Failure);
+                    var oauthLogger = context.HttpContext.RequestServices
+                        .GetRequiredService<ILoggerFactory>()
+                        .CreateLogger("ApplyWise.GmailOAuth");
+                    oauthLogger.LogWarning(
+                        "Gmail OAuth callback failed with category {FailureCategory} and exception type {ExceptionType}.",
+                        failureReason,
+                        context.Failure?.GetType().Name ?? "none");
                     context.HandleResponse();
-                    context.Response.Redirect("/connections/gmail/failure");
+                    context.Response.Redirect(QueryHelpers.AddQueryString(
+                        "/connections/gmail/failure",
+                        GmailOAuthFailure.QueryParameter,
+                        failureReason));
                     return Task.CompletedTask;
                 };
             });
