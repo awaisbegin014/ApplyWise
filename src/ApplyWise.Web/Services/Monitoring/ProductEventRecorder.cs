@@ -17,6 +17,9 @@ public static class ProductEventNames
     public const string ApplicationCreated = "application.created";
     public const string InterviewScheduled = "interview.scheduled";
     public const string ScamCheckCompleted = "scam_check.completed";
+    public const string AiBulletCoachCompleted = "ai.bullet_coach_completed";
+    public const string ProUpgradeRequested = "subscription.pro_requested";
+    public const string ProUpgradeApproved = "subscription.pro_approved";
 }
 
 public interface IProductEventRecorder

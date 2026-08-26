@@ -1,0 +1,75 @@
+@model ApplyWise.Web.ViewModels.Admin.AdminProRequestsViewModel
+@using ApplyWise.Web.Models
+@{
+    ViewData["Title"] = "Pro requests";
+}
+
+<div class="admin-dashboard">
+    <section class="page-heading admin-heading">
+        <div><span class="eyebrow">Subscriptions</span><h1>Pro verification queue</h1><p>Verify each transaction outside ApplyWise before approving access.</p></div>
+        <span class="badge @(Model.PendingCount == 0 ? "badge-success" : "badge-warning")">@Model.PendingCount pending</span>
+    </section>
+
+    @if (TempData["SuccessMessage"] is string success)
+    {
+        <div class="alert app-alert" role="status">@success</div>
+    }
+
+    <nav class="aw-admin-filter" aria-label="Request status">
+        @foreach (var item in new[] { "pending", "approved", "rejected", "all" })
+        {
+            <a class="btn @(Model.Status == item ? "btn-primary" : "btn-outline-primary") btn-sm" asp-action="ProRequests" asp-route-status="@item">@char.ToUpperInvariant(item[0])@item[1..]</a>
+        }
+    </nav>
+
+    <section class="aw-admin-request-list">
+        @if (Model.Requests.Count == 0)
+        {
+            <div class="panel admin-empty"><strong>No @Model.Status requests</strong><span>Matching upgrade applications will appear here.</span></div>
+        }
+        @foreach (var request in Model.Requests)
+        {
+            <article class="panel aw-admin-request">
+                <header>
+                    <div><span class="eyebrow">Request #@request.Id</span><h2>@request.DisplayName</h2><p>@request.Email</p></div>
+                    <span class="badge @(request.Status == ProUpgradeRequestStatus.Approved ? "badge-success" : request.Status == ProUpgradeRequestStatus.Pending ? "badge-warning" : "badge-neutral")">@request.Status</span>
+                </header>
+                <dl>
+                    <div><dt>Method</dt><dd>@request.PaymentMethod</dd></div>
+                    <div><dt>Reference</dt><dd><code>@request.TransactionReference</code></dd></div>
+                    <div><dt>Payer</dt><dd>@request.PayerName</dd></div>
+                    <div><dt>Amount</dt><dd>@request.Currency @request.Amount.ToString("0.##")</dd></div>
+                    <div><dt>Submitted</dt><dd>@request.SubmittedAt.ToLocalTime().ToString("MMM d, yyyy h:mm tt")</dd></div>
+                </dl>
+                @if (!string.IsNullOrWhiteSpace(request.UserNote))
+                {
+                    <p class="aw-request-note"><strong>User note:</strong> @request.UserNote</p>
+                }
+                @if (request.Status == ProUpgradeRequestStatus.Pending)
+                {
+                    <div class="aw-admin-review-actions">
+                        <form asp-action="ApproveProRequest" asp-route-id="@request.Id" method="post">
+                            <label for="approve-note-@request.Id">Verification note (optional)</label>
+                            <input id="approve-note-@request.Id" name="AdminNote" class="form-control" maxlength="1000" placeholder="Verified against payment statement" />
+                            <button class="btn btn-primary" type="submit">Verify and activate Pro</button>
+                        </form>
+                        <form asp-action="RejectProRequest" asp-route-id="@request.Id" method="post">
+                            <label for="reject-note-@request.Id">Rejection reason</label>
+                            <input id="reject-note-@request.Id" name="AdminNote" class="form-control" maxlength="1000" placeholder="Reference not found or amount mismatch" />
+                            <button class="btn btn-outline-danger" type="submit">Reject request</button>
+                        </form>
+                    </div>
+                }
+                else
+                {
+                    <p class="aw-request-note"><strong>Owner note:</strong> @(request.AdminNote ?? "No note provided.")</p>
+                }
+            </article>
+        }
+    </section>
+</div>
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/admin.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/subscriptions-ai.css" asp-append-version="true" />
+}

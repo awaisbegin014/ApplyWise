@@ -1,0 +1,73 @@
+@model ApplyWise.Web.ViewModels.Subscriptions.SubscriptionPageViewModel
+@using ApplyWise.Web.Models
+@{
+    ViewData["Title"] = "Free and Pro";
+    var subscription = Model.Subscription;
+}
+
+<div class="aw-plan-page">
+    @if (TempData["SuccessMessage"] is string success)
+    {
+        <div class="alert app-alert aw-plan-success" role="status">@success</div>
+    }
+    <section class="aw-plan-hero">
+        <span class="eyebrow">Plans</span>
+        <h1>Start free. Upgrade when AI becomes part of your workflow.</h1>
+        <p>All core ApplyWise tools remain available. Pro increases your AI coaching allowance after manual payment verification.</p>
+    </section>
+
+    <section class="aw-plan-grid">
+        <article class="panel aw-plan-card @(subscription.IsPro ? null : "is-current")">
+            <span class="aw-plan-pill">Free</span>
+            <h2>Explore AI coaching</h2>
+            <strong class="aw-plan-price">@Model.Options.FreeAiTrialLimit <small>AI trials</small></strong>
+            <ul>
+                <li>Core job tracker and resume tools</li>
+                <li>Resume builder and saved versions</li>
+                <li>@Model.Options.FreeAiTrialLimit lifetime AI bullet rewrites</li>
+            </ul>
+            @if (!subscription.IsPro)
+            {
+                <span class="aw-current-plan">Current plan · @subscription.AiRemaining trial@(subscription.AiRemaining == 1 ? "" : "s") left</span>
+            }
+        </article>
+        <article class="panel aw-plan-card aw-pro-card @(subscription.IsPro ? "is-current" : null)">
+            <span class="aw-plan-pill is-pro">Pro</span>
+            <h2>Use AI throughout your job search</h2>
+            <strong class="aw-plan-price">@Model.Options.Currency @Model.Options.ProPrice.ToString("0.##") <small>/ @Model.Options.ProDurationDays days</small></strong>
+            <ul>
+                <li>@Model.Options.ProMonthlyAiLimit AI coaching requests per @Model.Options.ProDurationDays-day cycle</li>
+                <li>Truthful, job-aware bullet rewrites</li>
+                <li>Usage visibility and controlled limits</li>
+            </ul>
+            @if (subscription.IsPro)
+            {
+                <span class="aw-current-plan">Active until @subscription.ProExpiresAt?.ToLocalTime().ToString("MMM d, yyyy") · @subscription.AiRemaining AI requests left</span>
+            }
+            else if (Model.LatestRequest?.Status == ProUpgradeRequestStatus.Pending)
+            {
+                <span class="aw-pending-plan">Verification pending since @Model.LatestRequest.SubmittedAt.ToLocalTime().ToString("MMM d")</span>
+            }
+            else
+            {
+                <a class="btn btn-primary" asp-action="Upgrade">Apply for Pro</a>
+            }
+        </article>
+    </section>
+
+    @if (Model.LatestRequest is not null && Model.LatestRequest.Status != ProUpgradeRequestStatus.Pending)
+    {
+        <section class="panel aw-request-status">
+            <div><span class="eyebrow">Latest request</span><h2>@Model.LatestRequest.Status</h2></div>
+            <p>@(string.IsNullOrWhiteSpace(Model.LatestRequest.AdminNote) ? "The owner has reviewed this request." : Model.LatestRequest.AdminNote)</p>
+            @if (Model.LatestRequest.Status == ProUpgradeRequestStatus.Rejected && !subscription.IsPro)
+            {
+                <a class="btn btn-outline-primary" asp-action="Upgrade">Submit a new request</a>
+            }
+        </section>
+    }
+
+    <p class="aw-plan-footnote">AI limits protect service availability and API costs. Pro activation is not automatic: the owner verifies the submitted transaction reference first.</p>
+</div>
+
+@section Styles { <link rel="stylesheet" href="~/css/subscriptions-ai.css" asp-append-version="true" /> }
