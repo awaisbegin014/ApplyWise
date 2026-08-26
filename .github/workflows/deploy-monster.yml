@@ -11,10 +11,6 @@ on:
         description: Earlier successful Validate release run ID used for automatic binary rollback
         required: true
         type: string
-      website_name:
-        description: Exact MonsterASP.NET website name
-        required: true
-        type: string
       production_origin:
         description: Canonical HTTPS origin that must serve the deployed release
         required: true
@@ -70,7 +66,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           INPUT_RELEASE_RUN_ID: ${{ inputs.release_run_id }}
           INPUT_ROLLBACK_RUN_ID: ${{ inputs.rollback_run_id }}
-          INPUT_WEBSITE_NAME: ${{ inputs.website_name }}
+          MONSTER_WEBSITE_NAME: ${{ secrets.MONSTER_SERVER_USERNAME }}
           INPUT_PRODUCTION_ORIGIN: ${{ inputs.production_origin }}
           INPUT_DATABASE_BACKUP_REFERENCE: ${{ inputs.database_backup_reference }}
           INPUT_ENVIRONMENT_CONFIRMED: ${{ inputs.production_environment_is_configured }}
@@ -98,7 +94,7 @@ jobs:
           if ($releaseRunId -le 0 -or $rollbackRunId -le 0 -or $releaseRunId -eq $rollbackRunId) {
             throw "Choose distinct positive release and rollback workflow run IDs."
           }
-          if ($env:INPUT_WEBSITE_NAME -notmatch '^[A-Za-z0-9.-]+$') {
+          if ($env:MONSTER_WEBSITE_NAME -notmatch '^[A-Za-z0-9.-]+$') {
             throw "The Monster website name contains unsupported characters."
           }
           $origin = $null
@@ -330,7 +326,7 @@ jobs:
       - name: Ensure the application pool is running before preflight
         shell: pwsh
         env:
-          MONSTER_WEBSITE_NAME: ${{ inputs.website_name }}
+          MONSTER_WEBSITE_NAME: ${{ secrets.MONSTER_SERVER_USERNAME }}
           MONSTER_SERVER_NAME: ${{ secrets.MONSTER_SERVER_COMPUTER_NAME }}
           MONSTER_USERNAME: ${{ secrets.MONSTER_SERVER_USERNAME }}
           MONSTER_PASSWORD: ${{ secrets.MONSTER_SERVER_PASSWORD }}
@@ -389,7 +385,7 @@ jobs:
         continue-on-error: true
         uses: rasmusbuchholdt/simply-web-deploy@026998dd5857dd5f3645cc13ed48335e07d7f94b
         with:
-          website-name: ${{ inputs.website_name }}
+          website-name: ${{ secrets.MONSTER_SERVER_USERNAME }}
           server-computer-name: ${{ secrets.MONSTER_SERVER_COMPUTER_NAME }}
           server-username: ${{ secrets.MONSTER_SERVER_USERNAME }}
           server-password: ${{ secrets.MONSTER_SERVER_PASSWORD }}
@@ -400,7 +396,7 @@ jobs:
         if: ${{ always() && steps.deploy_release.outcome == 'failure' }}
         shell: pwsh
         env:
-          MONSTER_WEBSITE_NAME: ${{ inputs.website_name }}
+          MONSTER_WEBSITE_NAME: ${{ secrets.MONSTER_SERVER_USERNAME }}
           MONSTER_SERVER_NAME: ${{ secrets.MONSTER_SERVER_COMPUTER_NAME }}
           MONSTER_USERNAME: ${{ secrets.MONSTER_SERVER_USERNAME }}
           MONSTER_PASSWORD: ${{ secrets.MONSTER_SERVER_PASSWORD }}
@@ -446,7 +442,7 @@ jobs:
         continue-on-error: true
         uses: rasmusbuchholdt/simply-web-deploy@026998dd5857dd5f3645cc13ed48335e07d7f94b
         with:
-          website-name: ${{ inputs.website_name }}
+          website-name: ${{ secrets.MONSTER_SERVER_USERNAME }}
           server-computer-name: ${{ secrets.MONSTER_SERVER_COMPUTER_NAME }}
           server-username: ${{ secrets.MONSTER_SERVER_USERNAME }}
           server-password: ${{ secrets.MONSTER_SERVER_PASSWORD }}
@@ -457,7 +453,7 @@ jobs:
         if: ${{ always() && steps.deploy_rollback.outcome == 'failure' }}
         shell: pwsh
         env:
-          MONSTER_WEBSITE_NAME: ${{ inputs.website_name }}
+          MONSTER_WEBSITE_NAME: ${{ secrets.MONSTER_SERVER_USERNAME }}
           MONSTER_SERVER_NAME: ${{ secrets.MONSTER_SERVER_COMPUTER_NAME }}
           MONSTER_USERNAME: ${{ secrets.MONSTER_SERVER_USERNAME }}
           MONSTER_PASSWORD: ${{ secrets.MONSTER_SERVER_PASSWORD }}
