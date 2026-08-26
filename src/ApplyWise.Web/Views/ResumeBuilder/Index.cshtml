@@ -10,6 +10,7 @@
 <div class="aw-page aw-resume-builder aw-fade-in"
      data-resume-builder
      data-draft-key="@Model.DraftStorageKey"
+     data-export-authorization-url="@Url.Action("AuthorizeExport", "ResumeBuilder")"
      data-initial-section="@Model.InitialSection"
      data-gallery-photo-url="@Url.Content("~/images/wiso.jpg")"
      data-roboto-font-url="@Url.Content("~/lib/pdfmake/vfs_fonts.js")"
@@ -17,6 +18,7 @@
      data-libre-baskerville-font-url="@Url.Content("~/lib/pdfmake/libre_baskerville_vfs.js")"
      data-cmu-serif-font-url="@Url.Content("~/lib/pdfmake/cmu_serif_vfs.js")">
     <textarea data-sample-resume hidden aria-hidden="true" tabindex="-1">@Model.SampleResumeJson</textarea>
+    <form data-export-authorization hidden>@Html.AntiForgeryToken()</form>
 
     <section id="rb-template-gallery" class="aw-rb-template-gallery" data-template-gallery aria-labelledby="rb-template-gallery-title" hidden>
         <header class="aw-rb-template-gallery-header">
@@ -102,6 +104,11 @@
                     Saved in this browser
                 </span>
                 <span id="rb-pdf-status" class="aw-rb-pdf-status" data-pdf-status role="status" aria-live="polite" aria-atomic="true"></span>
+                <span class="aw-plan-pill @(Model.Subscription.IsPro ? "is-pro" : null)" data-build-allowance>
+                    @(Model.Subscription.IsPro
+                        ? "Pro · unlimited downloads"
+                        : $"Free · {Model.Subscription.ResumeBuildsRemaining} of {Model.Subscription.ResumeBuildLimit} downloads left")
+                </span>
             </div>
         </div>
         <div class="aw-rb-toolbar" aria-label="Resume actions">

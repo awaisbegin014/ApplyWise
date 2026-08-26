@@ -40,8 +40,9 @@ Google__GmailAutoSyncEnabled=true
 Gemini__Enabled=true
 Gemini__ApiKey=<server-side Gemini API key>
 Gemini__Model=<approved Gemini model>
-Subscriptions__FreeAiTrialLimit=2
-Subscriptions__ProMonthlyAiLimit=100
+Subscriptions__FreeAtsAnalysisLimit=2
+Subscriptions__ProAtsAnalysisLimit=100
+Subscriptions__FreeResumeBuildLimit=2
 Subscriptions__ProPrice=<displayed price>
 Subscriptions__Currency=PKR
 Subscriptions__PaymentInstructions=<verified payment destination and instructions>
@@ -86,7 +87,7 @@ For the one-time first rollout of `2026-08-release-hardening-v2`, create two dis
 - Verify static CSS/JavaScript, login/logout, and every protected navigation link.
 - Upload a small text-based demo PDF and confirm it is absent from public static URLs.
 - Create/edit/delete an application and confirm its resume relationship.
-- Run analysis, best-resume selection, application tracking, Gmail import, and scam review.
+- Run ATS analysis, compare-all resume selection, application tracking, Gmail import, and scam review.
 - Confirm a second account receives 404/no data for the first account's record IDs.
 - Review Monster Control Panel logs without logging resume contents or connection strings.
 - Configure backups, health monitoring, alerts, storage retention, and a rollback plan.

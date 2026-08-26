@@ -2,6 +2,7 @@ namespace ApplyWise.Web.Services.BestResumePicker;
 
 public sealed record ComparedResumeResult(
     int ResumeId,
+    int? AnalysisId,
     string VersionName,
     string OriginalFileName,
     int? MatchScore,

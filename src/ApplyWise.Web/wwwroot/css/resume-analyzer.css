@@ -2109,3 +2109,18 @@ html[data-theme="dark"] .aw-ra-compact-good span {
     .aw-ra-v3-requirements,
     .aw-ra-v3-section-grid { grid-template-columns: 1fr; }
 }
+.aw-ai-ats-feedback { margin-top: 1.25rem; }
+.aw-ai-ats-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.aw-ai-ats-grid > div { padding: 1rem; border: 1px solid var(--border); border-radius: 16px; background: var(--surface-soft); }
+.aw-ai-ats-grid h4, .aw-ai-ats-actions h4 { margin: 0 0 .65rem; }
+.aw-ai-ats-grid ul { margin: 0; padding-left: 1.2rem; }
+.aw-ai-ats-grid li + li { margin-top: .45rem; }
+.aw-ai-ats-actions { margin-top: 1rem; }
+.aw-ai-ats-actions article { display: grid; grid-template-columns: minmax(90px, .28fr) 1fr; gap: .9rem; padding: 1rem 0; border-top: 1px solid var(--border); }
+.aw-ai-ats-actions article > span { color: var(--primary); font-size: .78rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+.aw-ai-ats-actions article p { margin: .25rem 0; }
+.aw-ai-job-fit { margin: 1rem 0 0; padding: 1rem; border-radius: 14px; background: color-mix(in srgb, var(--primary) 8%, var(--surface)); }
+@media (max-width: 720px) {
+  .aw-ai-ats-grid { grid-template-columns: 1fr; }
+  .aw-ai-ats-actions article { grid-template-columns: 1fr; }
+}

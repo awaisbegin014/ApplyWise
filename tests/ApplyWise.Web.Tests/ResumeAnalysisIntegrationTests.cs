@@ -3,6 +3,7 @@ using ApplyWise.Web.Controllers;
 using ApplyWise.Web.Data;
 using ApplyWise.Web.Models;
 using ApplyWise.Web.Services.BestResumePicker;
+using ApplyWise.Web.Services.Ai;
 using ApplyWise.Web.Services.ResumeAnalysis;
 using ApplyWise.Web.Services.ResumeStorage;
 using ApplyWise.Web.ViewModels.ResumeAnalyzer;
@@ -17,6 +18,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using ApplyWise.Web.Services.Monitoring;
 using ApplyWise.Web.Services.Security;
+using ApplyWise.Web.Services.Subscriptions;
 using Microsoft.Extensions.Options;
 using Xunit;
 
@@ -179,8 +181,7 @@ public sealed class ResumeAnalysisIntegrationTests
             typeof(ResumeAnalyzerController).GetMethod(nameof(ResumeAnalyzerController.AnalyzePastedRequirements))!,
             typeof(ResumeAnalyzerController).GetMethod(nameof(ResumeAnalyzerController.AnalyzeSavedResumeAts))!,
             typeof(ResumeAnalyzerController).GetMethod(nameof(ResumeAnalyzerController.AnalyzeSavedApplication))!,
-            typeof(BestResumePickerController).GetMethod(nameof(BestResumePickerController.Compare))!,
-            typeof(BestResumePickerController).GetMethod(nameof(BestResumePickerController.CompareResumesWithPastedRequirements))!
+            typeof(ResumeAnalyzerController).GetMethod(nameof(ResumeAnalyzerController.CompareAllResumes))!
         };
 
         Assert.All(methods, method =>
@@ -189,7 +190,7 @@ public sealed class ResumeAnalysisIntegrationTests
             var rateLimit = Assert.IsType<EnableRateLimitingAttribute>(
                 method.GetCustomAttributes(typeof(EnableRateLimitingAttribute), true).Single());
             Assert.Equal(
-                method.DeclaringType == typeof(BestResumePickerController)
+                method.Name == nameof(ResumeAnalyzerController.CompareAllResumes)
                     ? "resume-comparison"
                     : "resume-analysis",
                 rateLimit.PolicyName);
@@ -232,6 +233,9 @@ public sealed class ResumeAnalysisIntegrationTests
             new WorkspaceQuotaService(db, Options.Create(new WorkspaceQuotaOptions())),
             new WorkspaceQuotaGate(db),
             new NoOpProductEventRecorder(),
+            new DisabledAiAdvisor(),
+            CreateSubscriptionService(db),
+            new UnusedBestResumePickerService(),
             NullLogger<ResumeAnalyzerController>.Instance)
         {
             ControllerContext = new ControllerContext { HttpContext = httpContext }
@@ -304,6 +308,9 @@ public sealed class ResumeAnalysisIntegrationTests
             quotas,
             new WorkspaceQuotaGate(db),
             new NoOpProductEventRecorder(),
+            new DisabledAiAdvisor(),
+            CreateSubscriptionService(db),
+            new UnusedBestResumePickerService(),
             NullLogger<ResumeAnalyzerController>.Instance)
         {
             ControllerContext = new ControllerContext(
@@ -318,12 +325,13 @@ public sealed class ResumeAnalysisIntegrationTests
 
         var redirect = Assert.IsType<RedirectToActionResult>(action);
         Assert.Equal(nameof(ResumeAnalyzerController.Index), redirect.ActionName);
-        Assert.Null(redirect.RouteValues);
+        Assert.Null(redirect.RouteValues?["analysisId"]);
         Assert.Contains(
             "saved-analysis limit",
             Assert.IsType<string>(controller.TempData["AnalysisError"]),
             StringComparison.OrdinalIgnoreCase);
         Assert.Empty(await db.ResumeAnalyses.ToListAsync());
+        Assert.Equal(AiUsageStatus.Failed, (await db.AiUsageRecords.SingleAsync()).Status);
         Assert.DoesNotContain(
             db.ChangeTracker.Entries<ResumeAnalysis>(),
             entry => entry.State == EntityState.Added);
@@ -333,6 +341,34 @@ public sealed class ResumeAnalysisIntegrationTests
     {
         public Task RecordAsync(string name, string source, string? userId = null, bool succeeded = true, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task RecordLoginAsync(string userId, string source, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    private static SubscriptionService CreateSubscriptionService(ApplicationDbContext db) => new(
+        db,
+        new WorkspaceQuotaGate(db),
+        Options.Create(new SubscriptionOptions()),
+        TimeProvider.System);
+
+    private sealed class DisabledAiAdvisor : IGeminiAtsAdvisor
+    {
+        public bool IsConfigured => false;
+        public string ModelName => "disabled";
+        public Task<AiAtsFeedback> CreateFeedbackAsync(
+            ResumeAnalysisAiContext context,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
+
+    private sealed class UnusedBestResumePickerService : IBestResumePickerService
+    {
+        public Task<BestResumePickerResult> CompareResumesForJobAsync(
+            string userId,
+            int jobApplicationId,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<BestResumePickerResult> CompareResumesWithRequirementsAsync(
+            string userId,
+            string jobRequirements,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
     [Fact]

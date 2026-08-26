@@ -517,8 +517,9 @@ builder.Services.AddOptions<ContactMessageStorageOptions>()
     .ValidateOnStart();
 builder.Services.AddOptions<SubscriptionOptions>()
     .Bind(builder.Configuration.GetSection(SubscriptionOptions.SectionName))
-    .Validate(options => options.FreeAiTrialLimit is >= 1 and <= 20
-            && options.ProMonthlyAiLimit is >= 10 and <= 10_000
+    .Validate(options => options.FreeAtsAnalysisLimit is >= 1 and <= 20
+            && options.ProAtsAnalysisLimit is >= 10 and <= 10_000
+            && options.FreeResumeBuildLimit is >= 1 and <= 20
             && options.ProDurationDays is >= 1 and <= 366
             && options.ProPrice > 0
             && !string.IsNullOrWhiteSpace(options.Currency)
@@ -610,7 +611,7 @@ builder.Services.AddScoped<IWorkspaceQuotaGate, WorkspaceQuotaGate>();
 builder.Services.AddScoped<IContactMessageStore, ContactMessageStore>();
 builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
 builder.Services.AddScoped<IAuthorizationHandler, AdminMfaAuthorizationHandler>();
-builder.Services.AddHttpClient<IGeminiResumeCoach, GeminiResumeCoach>((services, client) =>
+builder.Services.AddHttpClient<IGeminiAtsAdvisor, GeminiAtsAdvisor>((services, client) =>
 {
     var settings = services.GetRequiredService<IOptions<GeminiOptions>>().Value;
     client.BaseAddress = new Uri("https://generativelanguage.googleapis.com/");

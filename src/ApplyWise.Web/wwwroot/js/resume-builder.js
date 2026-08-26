@@ -1601,6 +1601,9 @@
         const previewState = root.querySelector('[data-preview-state]');
         const saveStatus = root.querySelector('[data-save-status]');
         const pdfStatus = root.querySelector('[data-pdf-status]');
+        const buildAllowance = root.querySelector('[data-build-allowance]');
+        const exportAuthorizationUrl = text(root.dataset.exportAuthorizationUrl, 500);
+        const exportAuthorizationForm = root.querySelector('[data-export-authorization]');
         const clearDialog = root.querySelector('[data-clear-dialog]');
         const templateDialog = root.querySelector('[data-template-dialog]');
         const summaryCount = root.querySelector('[data-summary-count]');
@@ -3195,10 +3198,34 @@
                     setStatus(pdfStatus, 'This resume is ' + currentValidation.pageCount + ' pages. Shorten it until the one-page check passes.');
                     return;
                 }
+                if (exportAuthorizationUrl) {
+                    const tokenInput = exportAuthorizationForm
+                        ? exportAuthorizationForm.querySelector('input[name="__RequestVerificationToken"]')
+                        : null;
+                    const body = new URLSearchParams();
+                    body.set('templateId', state.templateId);
+                    const response = await windowObject.fetch(exportAuthorizationUrl, {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: tokenInput ? { 'RequestVerificationToken': tokenInput.value } : {},
+                        body: body
+                    });
+                    const payload = await response.json().catch(function () { return {}; });
+                    if (!response.ok || !payload.allowed) {
+                        throw new Error(payload.message || 'Your resume download allowance is unavailable.');
+                    }
+                    if (buildAllowance) {
+                        buildAllowance.textContent = payload.isPro
+                            ? 'Pro · unlimited downloads'
+                            : 'Free · ' + payload.remaining + ' downloads left';
+                    }
+                }
                 downloadBlob(blob, buildFilename(state.personalInformation.fullName));
                 setStatus(pdfStatus, 'PDF ready. Your download has started.');
-            } catch (_error) {
-                setStatus(pdfStatus, 'The PDF could not be created. Please try again.');
+            } catch (error) {
+                setStatus(pdfStatus, error && error.message
+                    ? error.message
+                    : 'The PDF could not be created. Please try again.');
             } finally {
                 buttons.forEach(function (button) { button.removeAttribute('aria-busy'); });
                 updateValidation();

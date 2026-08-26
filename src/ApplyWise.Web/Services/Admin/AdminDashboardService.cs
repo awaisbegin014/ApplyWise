@@ -38,7 +38,7 @@ public sealed class AdminDashboardService(
             [ProductEventNames.ResumeAnalysisCompleted] = "Analyses completed",
             [ProductEventNames.ApplicationCreated] = "Applications created",
             [ProductEventNames.ScamCheckCompleted] = "Scam checks completed",
-            [ProductEventNames.AiBulletCoachCompleted] = "AI bullet coaching",
+            [ProductEventNames.AtsAiFeedbackCompleted] = "AI ATS feedback",
             [ProductEventNames.ProUpgradeRequested] = "Pro requests",
             [ProductEventNames.ProUpgradeApproved] = "Pro approvals"
         };

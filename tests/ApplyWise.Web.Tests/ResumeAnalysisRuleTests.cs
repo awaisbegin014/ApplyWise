@@ -76,6 +76,34 @@ public sealed class ResumeAnalysisRuleTests
         Assert.Contains(requirements, item => item.Category == RequirementCategory.Seniority);
     }
 
+    [Theory]
+    [InlineData(
+        "Medical Laboratory Technician\nRequirements:\nSpecimen processing, quality control, and biosafety are required for clinical laboratory work.\nResponsibilities:\nMaintain laboratory equipment and document specimen results.",
+        "EXPERIENCE\nMedical Laboratory Technician | 2021 - Present\n- Performed specimen processing, quality control, and biosafety procedures for clinical samples.\n- Maintained laboratory equipment and documented specimen results.",
+        "specimen processing|Quality Assurance|biosafety")]
+    [InlineData(
+        "Electrical Technician\nRequirements:\nElectrical maintenance, wiring diagrams, and lockout tagout are required for plant operations.\nResponsibilities:\nTroubleshoot electrical equipment and document repairs.",
+        "EXPERIENCE\nElectrical Technician | 2020 - Present\n- Completed electrical maintenance using wiring diagrams and lockout tagout procedures.\n- Troubleshot electrical equipment and documented repairs.",
+        "electrical maintenance|wiring diagrams|lockout tagout")]
+    public void Profession_specific_requirement_lists_are_scored_without_a_technology_taxonomy(
+        string job,
+        string relevantExperience,
+        string expectedNames)
+    {
+        var expected = expectedNames.Split('|');
+        var requirements = _requirements.Extract(job);
+        var relevant = _service.Analyze(ResumeWith(relevantExperience), job);
+        var unrelated = _service.Analyze(ResumeWith(
+            "EXPERIENCE\nOffice Assistant | 2021 - Present\n- Organized files and scheduled team meetings."), job);
+
+        Assert.All(expected, name => Assert.Contains(requirements,
+            item => item.Name.Equals(name, StringComparison.OrdinalIgnoreCase)
+                && item.Category == RequirementCategory.DomainSkill));
+        Assert.All(expected, name => Assert.Contains(relevant.MatchedRequirements,
+            item => item.RequirementName.Equals(name, StringComparison.OrdinalIgnoreCase)));
+        Assert.True(relevant.JobMatchScore > unrelated.JobMatchScore);
+    }
+
     [Fact]
     public void Repeated_keywords_do_not_inflate_job_match()
     {

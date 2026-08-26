@@ -23,6 +23,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<UserSubscription> UserSubscriptions => Set<UserSubscription>();
     public DbSet<ProUpgradeRequest> ProUpgradeRequests => Set<ProUpgradeRequest>();
     public DbSet<AiUsageRecord> AiUsageRecords => Set<AiUsageRecord>();
+    public DbSet<ResumeBuildUsageRecord> ResumeBuildUsageRecords => Set<ResumeBuildUsageRecord>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -91,6 +92,8 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             entity.Property(analysis => analysis.EvidenceJson).HasColumnType("nvarchar(max)");
             entity.Property(analysis => analysis.WarningsJson).HasColumnType("nvarchar(max)");
             entity.Property(analysis => analysis.ReviewJson).HasColumnType("nvarchar(max)");
+            entity.Property(analysis => analysis.AiFeedbackJson).HasColumnType("nvarchar(max)");
+            entity.Property(analysis => analysis.AiModel).HasMaxLength(80);
             entity.Property(analysis => analysis.ResumeTextSnapshot).HasColumnType("nvarchar(max)");
             entity.Property(analysis => analysis.JobDescriptionSnapshot).HasColumnType("nvarchar(max)");
 
@@ -303,6 +306,16 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
                 .HasMaxLength(20);
             entity.Property(usage => usage.Model).HasMaxLength(80);
             entity.HasIndex(usage => new { usage.UserId, usage.Status, usage.ReservedAt });
+            entity.HasOne(usage => usage.User)
+                .WithMany()
+                .HasForeignKey(usage => usage.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<ResumeBuildUsageRecord>(entity =>
+        {
+            entity.Property(usage => usage.TemplateId).HasMaxLength(40);
+            entity.HasIndex(usage => new { usage.UserId, usage.CreatedAt });
             entity.HasOne(usage => usage.User)
                 .WithMany()
                 .HasForeignKey(usage => usage.UserId)

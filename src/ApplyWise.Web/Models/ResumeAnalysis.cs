@@ -26,6 +26,9 @@ public class ResumeAnalysis
     public string? EvidenceJson { get; set; }
     public string? WarningsJson { get; set; }
     public string? ReviewJson { get; set; }
+    public string? AiFeedbackJson { get; set; }
+    public string? AiModel { get; set; }
+    public DateTimeOffset? AiGeneratedAt { get; set; }
     public required string ResumeTextSnapshot { get; set; }
     public required string JobDescriptionSnapshot { get; set; }
     public long SnapshotSizeBytes { get; set; }
