@@ -15,6 +15,8 @@ using ApplyWise.Web.Services.Gmail;
 using ApplyWise.Web.Services.Admin;
 using ApplyWise.Web.Services.Monitoring;
 using ApplyWise.Web.Services.Contact;
+using ApplyWise.Web.Services.Ai;
+using ApplyWise.Web.Services.Subscriptions;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.DataProtection;
@@ -442,6 +444,26 @@ builder.Services.AddRateLimiter(options =>
             QueueLimit = 0,
             AutoReplenishment = true
         }));
+    options.AddPolicy("ai-coach", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 8,
+            Window = TimeSpan.FromMinutes(10),
+            QueueLimit = 0,
+            AutoReplenishment = true
+        }));
+    options.AddPolicy("pro-upgrade", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 3,
+            Window = TimeSpan.FromHours(1),
+            QueueLimit = 0,
+            AutoReplenishment = true
+        }));
 });
 builder.Services.AddAuthorization(options =>
 {
@@ -492,6 +514,25 @@ builder.Services.AddOptions<ContactMessageStorageOptions>()
             && options.ReservedAuthenticatedSlots <= options.MaxStoredMessages - 100
             && options.MaxUnreadPerAuthenticatedUser is >= 1 and <= 100,
         "ContactMessages retention must be 30-730 days, storage cap 100-100000 messages, authenticated reserve must leave at least 100 anonymous slots, and per-account unread cap must be 1-100.")
+    .ValidateOnStart();
+builder.Services.AddOptions<SubscriptionOptions>()
+    .Bind(builder.Configuration.GetSection(SubscriptionOptions.SectionName))
+    .Validate(options => options.FreeAiTrialLimit is >= 1 and <= 20
+            && options.ProMonthlyAiLimit is >= 10 and <= 10_000
+            && options.ProDurationDays is >= 1 and <= 366
+            && options.ProPrice > 0
+            && !string.IsNullOrWhiteSpace(options.Currency)
+            && options.Currency.Length <= 10
+            && !string.IsNullOrWhiteSpace(options.PaymentInstructions),
+        "Subscription limits, price, currency, duration, or payment instructions are invalid.")
+    .ValidateOnStart();
+builder.Services.AddOptions<GeminiOptions>()
+    .Bind(builder.Configuration.GetSection(GeminiOptions.SectionName))
+    .Validate(options => !options.Enabled || options.IsConfigured,
+        "Enabled Gemini integration requires an API key and model.")
+    .Validate(options => options.TimeoutSeconds is >= 5 and <= 120
+            && options.MaxOutputTokens is >= 256 and <= 4096,
+        "Gemini timeout or output-token limits are invalid.")
     .ValidateOnStart();
 builder.Services.AddOptions<PendingRegistrationOptions>()
     .Bind(builder.Configuration.GetSection(PendingRegistrationOptions.SectionName))
@@ -567,7 +608,15 @@ builder.Services.AddScoped<IWorkspaceQuotaService, WorkspaceQuotaService>();
 builder.Services.AddScoped<IApplicationLockProvider, ApplicationLockProvider>();
 builder.Services.AddScoped<IWorkspaceQuotaGate, WorkspaceQuotaGate>();
 builder.Services.AddScoped<IContactMessageStore, ContactMessageStore>();
+builder.Services.AddScoped<ISubscriptionService, SubscriptionService>();
 builder.Services.AddScoped<IAuthorizationHandler, AdminMfaAuthorizationHandler>();
+builder.Services.AddHttpClient<IGeminiResumeCoach, GeminiResumeCoach>((services, client) =>
+{
+    var settings = services.GetRequiredService<IOptions<GeminiOptions>>().Value;
+    client.BaseAddress = new Uri("https://generativelanguage.googleapis.com/");
+    client.Timeout = TimeSpan.FromSeconds(settings.TimeoutSeconds);
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("ApplyWise/1.0");
+});
 builder.Services.AddHostedService<ProductEventCleanupService>();
 builder.Services.AddHostedService<ContactMessageCleanupService>();
 builder.Services.AddOptions<GoogleIntegrationOptions>()

@@ -37,6 +37,14 @@ DataProtection__CertificatePath=<absolute path to a mounted PFX or encrypted PEM
 DataProtection__CertificatePassword=<certificate password>
 Google__GmailImportEnabled=true
 Google__GmailAutoSyncEnabled=true
+Gemini__Enabled=true
+Gemini__ApiKey=<server-side Gemini API key>
+Gemini__Model=<approved Gemini model>
+Subscriptions__FreeAiTrialLimit=2
+Subscriptions__ProMonthlyAiLimit=100
+Subscriptions__ProPrice=<displayed price>
+Subscriptions__Currency=PKR
+Subscriptions__PaymentInstructions=<verified payment destination and instructions>
 ```
 
 Use absolute paths below the site's sibling `Private` directory for resumes, Data Protection keys, and the PFX certificate—for example, `D:\Sites\site12345\Private\ApplyWise\...` using the actual physical path shown for your Monster site. Production rejects any of these paths beneath the application/Web Deploy root because `target-delete` could erase them. Upload the certificate to `Private` through Monster WebFTP and back up the encrypted key directory; it protects authentication cookies, protected Gmail credentials, and account-recovery tokens.

@@ -37,7 +37,10 @@ public sealed class AdminDashboardService(
             [ProductEventNames.ResumeUploaded] = "Resumes uploaded",
             [ProductEventNames.ResumeAnalysisCompleted] = "Analyses completed",
             [ProductEventNames.ApplicationCreated] = "Applications created",
-            [ProductEventNames.ScamCheckCompleted] = "Scam checks completed"
+            [ProductEventNames.ScamCheckCompleted] = "Scam checks completed",
+            [ProductEventNames.AiBulletCoachCompleted] = "AI bullet coaching",
+            [ProductEventNames.ProUpgradeRequested] = "Pro requests",
+            [ProductEventNames.ProUpgradeApproved] = "Pro approvals"
         };
     private static readonly string[] AggregatedEventNames = EventLabels.Keys.ToArray();
 
@@ -241,6 +244,9 @@ public sealed class AdminDashboardService(
             TotalContactMessages = await dbContext.ContactMessages.CountAsync(cancellationToken),
             UnreadContactMessages = await dbContext.ContactMessages.CountAsync(
                 message => message.ReadAt == null,
+                cancellationToken),
+            PendingProRequests = await dbContext.ProUpgradeRequests.CountAsync(
+                request => request.Status == ProUpgradeRequestStatus.Pending,
                 cancellationToken),
             FailedEventsInRange = failedEventsInRange,
             Users = users.Select(user => new AdminUserRowViewModel(

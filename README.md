@@ -29,7 +29,7 @@ Most job searches become fragmented across job boards, email, spreadsheets, cale
 4. Record the resume actually submitted for each application.
 5. Track application outcomes, follow-ups, deadlines, and source patterns.
 
-Resume matching is intentionally explainable. This release does **not** send resume text to an external generative-AI service, and its estimates never claim to reproduce an employer's ATS or guarantee an interview.
+Resume matching remains intentionally explainable and local. Optional AI bullet coaching sends only the user-selected bullet and optional job context to Gemini after explicit consent; AI never calculates the ATS score and its suggestions never guarantee an interview.
 
 ## Product tour
 
@@ -159,6 +159,8 @@ Production values must come from environment variables or a host secret store. N
 | `Email:*` | `Email__Host`, `Email__Port`, `Email__UserName`, `Email__Password`, `Email__From` | Confirmation and recovery email |
 | `Google:*` | `Google__ClientId`, `Google__ClientSecret` | Optional Google sign-in |
 | `Google:Gmail*` | `Google__GmailImportEnabled`, `Google__GmailAutoSyncEnabled` and bounded sync settings | Optional Gmail import controls |
+| `Gemini:*` | `Gemini__Enabled`, `Gemini__ApiKey`, `Gemini__Model` | Optional server-side Gemini resume coach; keep the API key in the secret store |
+| `Subscriptions:*` | `Subscriptions__FreeAiTrialLimit`, `Subscriptions__ProMonthlyAiLimit`, `Subscriptions__ProPrice`, `Subscriptions__Currency`, `Subscriptions__PaymentInstructions` | Freemium limits and manually verified Pro plan presentation |
 | `ResumeStorage:RootPath` | `ResumeStorage__RootPath` | Private resume directory |
 | `DataProtection:*` | `DataProtection__KeysPath`, certificate path/password, previous certificates | Persistent encryption material |
 | `Performance:SlowRequestThresholdMs` | `Performance__SlowRequestThresholdMs` | Slow-request warning threshold |

@@ -112,6 +112,10 @@
             <span>Contact inbox<small>@Model.TotalContactMessages total</small></span>
             <strong>@Model.UnreadContactMessages<small> unread</small></strong>
         </a>
+        <a class="panel admin-contact-object" asp-action="ProRequests">
+            <span>Pro requests<small>Manual transaction verification</small></span>
+            <strong>@Model.PendingProRequests<small> pending</small></strong>
+        </a>
     </section>
 
     <section class="panel admin-contact-preview-panel">

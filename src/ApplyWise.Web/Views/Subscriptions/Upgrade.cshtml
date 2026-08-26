@@ -1,0 +1,43 @@
+@model ApplyWise.Web.ViewModels.Subscriptions.ProUpgradeInputViewModel
+@{
+    ViewData["Title"] = "Apply for Pro";
+}
+
+<div class="aw-upgrade-page">
+    <a class="aw-back-link" asp-action="Index">← Back to plans</a>
+    <section class="aw-upgrade-grid">
+        <div>
+            <span class="eyebrow">Manual verification</span>
+            <h1>Apply for Pro access.</h1>
+            <p>Complete the payment first, then submit the exact transaction reference. Your account stays Free until the owner verifies it.</p>
+            <div class="panel aw-payment-instructions">
+                <strong>Payment instructions</strong>
+                <p>@Model.Options.PaymentInstructions</p>
+                <span>Amount: @Model.Options.Currency @Model.Options.ProPrice.ToString("0.##")</span>
+            </div>
+        </div>
+        <form asp-action="Upgrade" method="post" class="panel aw-upgrade-form">
+            <div asp-validation-summary="ModelOnly" class="validation-summary" role="alert"></div>
+            <div class="form-group">
+                <label asp-for="PaymentMethod"></label>
+                <select asp-for="PaymentMethod" class="form-select">
+                    <option value="">Select a method</option>
+                    <option>Bank transfer</option>
+                    <option>Easypaisa</option>
+                    <option>JazzCash</option>
+                    <option>Other</option>
+                </select>
+                <span asp-validation-for="PaymentMethod" class="field-validation-error"></span>
+            </div>
+            <div class="form-group"><label asp-for="TransactionReference"></label><input asp-for="TransactionReference" class="form-control" autocomplete="off" /><span asp-validation-for="TransactionReference" class="field-validation-error"></span></div>
+            <div class="form-group"><label asp-for="PayerName"></label><input asp-for="PayerName" class="form-control" autocomplete="name" /><span asp-validation-for="PayerName" class="field-validation-error"></span></div>
+            <div class="form-group"><label asp-for="Amount"></label><div class="input-group"><span class="input-group-text">@Model.Options.Currency</span><input asp-for="Amount" class="form-control" /></div><span asp-validation-for="Amount" class="field-validation-error"></span></div>
+            <div class="form-group"><label asp-for="UserNote"></label><textarea asp-for="UserNote" class="form-control" rows="3"></textarea><span asp-validation-for="UserNote" class="field-validation-error"></span></div>
+            <button class="btn btn-primary" type="submit">Submit for verification</button>
+            <small>Submitting a reference does not activate Pro. The owner must verify and approve it.</small>
+        </form>
+    </section>
+</div>
+
+@section Styles { <link rel="stylesheet" href="~/css/subscriptions-ai.css" asp-append-version="true" /> }
+@section Scripts { <partial name="_ValidationScriptsPartial" /> }

@@ -20,8 +20,11 @@
             || string.Equals(controller, "Contact", StringComparison.OrdinalIgnoreCase));
     var isAdminContactPage = string.Equals(controller, "Admin", StringComparison.OrdinalIgnoreCase)
         && action is "ContactMessages" or "ContactMessage" or "SetContactMessageReadState";
+    var isAdminProPage = string.Equals(controller, "Admin", StringComparison.OrdinalIgnoreCase)
+        && action is "ProRequests" or "ApproveProRequest" or "RejectProRequest";
     var isAdminConsolePage = string.Equals(controller, "Admin", StringComparison.OrdinalIgnoreCase)
-        && !isAdminContactPage;
+        && !isAdminContactPage
+        && !isAdminProPage;
     var metaDescription = ViewData["MetaDescription"]?.ToString()
         ?? "ApplyWise helps job seekers track applications, choose the right resume, and apply smarter.";
 }
@@ -91,6 +94,7 @@
                 {
                     <a class="@(isAdminConsolePage ? "active" : null)" aria-current="@(isAdminConsolePage ? "page" : null)" asp-controller="Admin" asp-action="Index"><svg class="ui-icon"><use href="#i-grid" /></svg>Owner console</a>
                     <a class="@(isAdminContactPage ? "active" : null)" aria-current="@(isAdminContactPage ? "page" : null)" asp-controller="Admin" asp-action="ContactMessages"><svg class="ui-icon"><use href="#i-mail" /></svg>Contact inbox</a>
+                    <a class="@(isAdminProPage ? "active" : null)" aria-current="@(isAdminProPage ? "page" : null)" asp-controller="Admin" asp-action="ProRequests"><svg class="ui-icon"><use href="#i-match" /></svg>Pro requests</a>
                     <a class="@(controller == "Dashboard" && action == "Settings" ? "active" : null)" aria-current="@(controller == "Dashboard" && action == "Settings" ? "page" : null)" asp-controller="Dashboard" asp-action="Settings"><svg class="ui-icon"><use href="#i-settings" /></svg>Owner security</a>
                 }
                 else
@@ -106,10 +110,12 @@
                         <a class="@(controller == "Resumes" ? "active" : null)" aria-current="@(controller == "Resumes" ? "page" : null)" asp-controller="Resumes" asp-action="Index"><svg class="ui-icon"><use href="#i-file" /></svg>Resume library</a>
                         <a class="@(controller == "ResumeBuilder" ? "active" : null)" aria-current="@(controller == "ResumeBuilder" ? "page" : null)" asp-controller="ResumeBuilder" asp-action="Index"><svg class="ui-icon"><use href="#i-edit-file" /></svg>Resume builder</a>
                         <a class="@(controller is "ResumeAnalyzer" or "BestResumePicker" ? "active" : null)" aria-current="@(controller is "ResumeAnalyzer" or "BestResumePicker" ? "page" : null)" asp-controller="ResumeAnalyzer" asp-action="Index"><svg class="ui-icon"><use href="#i-match" /></svg>Resume tools</a>
+                        <a class="@(controller == "AiCoach" ? "active" : null)" aria-current="@(controller == "AiCoach" ? "page" : null)" asp-controller="AiCoach" asp-action="Index"><svg class="ui-icon"><use href="#i-edit-file" /></svg>AI bullet coach <span class="aw-nav-pro-badge">AI</span></a>
                     </div>
                     <div class="sidebar-nav-group" role="group" aria-labelledby="nav-account-label">
                         <span class="sidebar-nav-label" id="nav-account-label">Account</span>
                         <a class="@(controller == "Profile" ? "active" : null)" aria-current="@(controller == "Profile" ? "page" : null)" asp-controller="Profile" asp-action="Index"><svg class="ui-icon"><use href="#i-user" /></svg>Profile</a>
+                        <a class="@(controller == "Subscriptions" ? "active" : null)" aria-current="@(controller == "Subscriptions" ? "page" : null)" asp-controller="Subscriptions" asp-action="Index"><svg class="ui-icon"><use href="#i-match" /></svg>Free &amp; Pro</a>
                         <a class="@(controller == "Dashboard" && action == "Settings" ? "active" : null)" aria-current="@(controller == "Dashboard" && action == "Settings" ? "page" : null)" asp-controller="Dashboard" asp-action="Settings"><svg class="ui-icon"><use href="#i-settings" /></svg>Settings</a>
                     </div>
                 }

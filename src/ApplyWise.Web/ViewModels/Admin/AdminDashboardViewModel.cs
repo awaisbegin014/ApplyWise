@@ -23,6 +23,7 @@ public sealed class AdminDashboardViewModel
     public int TotalAnalyses { get; init; }
     public int TotalContactMessages { get; init; }
     public int UnreadContactMessages { get; init; }
+    public int PendingProRequests { get; init; }
     public int FailedEventsInRange { get; init; }
     public IReadOnlyList<AdminUserRowViewModel> Users { get; init; } = [];
     public IReadOnlyList<AdminDailyActivityViewModel> DailyActivity { get; init; } = [];

@@ -20,6 +20,9 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<UserAccountActivity> UserAccountActivities => Set<UserAccountActivity>();
     public DbSet<ProductEvent> ProductEvents => Set<ProductEvent>();
     public DbSet<ContactMessage> ContactMessages => Set<ContactMessage>();
+    public DbSet<UserSubscription> UserSubscriptions => Set<UserSubscription>();
+    public DbSet<ProUpgradeRequest> ProUpgradeRequests => Set<ProUpgradeRequest>();
+    public DbSet<AiUsageRecord> AiUsageRecords => Set<AiUsageRecord>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -247,6 +250,63 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
                 .WithMany()
                 .HasForeignKey(message => message.UserId)
                 .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        builder.Entity<UserSubscription>(entity =>
+        {
+            entity.HasKey(subscription => subscription.UserId);
+            entity.Property(subscription => subscription.Tier)
+                .HasConversion<string>()
+                .HasMaxLength(20);
+            entity.Property(subscription => subscription.ApprovedByUserId).HasMaxLength(450);
+            entity.Property(subscription => subscription.RowVersion).IsRowVersion();
+            entity.HasIndex(subscription => subscription.ProExpiresAt);
+            entity.HasOne(subscription => subscription.User)
+                .WithOne()
+                .HasForeignKey<UserSubscription>(subscription => subscription.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<ProUpgradeRequest>(entity =>
+        {
+            entity.Property(request => request.PlanCode).HasMaxLength(40);
+            entity.Property(request => request.PaymentMethod).HasMaxLength(50);
+            entity.Property(request => request.TransactionReference).HasMaxLength(120);
+            entity.Property(request => request.PayerName).HasMaxLength(120);
+            entity.Property(request => request.Amount).HasPrecision(18, 2);
+            entity.Property(request => request.Currency).HasMaxLength(10);
+            entity.Property(request => request.UserNote).HasMaxLength(1000);
+            entity.Property(request => request.Status)
+                .HasConversion<string>()
+                .HasMaxLength(20);
+            entity.Property(request => request.ReviewedByUserId).HasMaxLength(450);
+            entity.Property(request => request.AdminNote).HasMaxLength(1000);
+            entity.Property(request => request.RowVersion).IsRowVersion();
+            entity.HasIndex(request => new { request.Status, request.SubmittedAt });
+            entity.HasIndex(request => new { request.PaymentMethod, request.TransactionReference })
+                .IsUnique();
+            entity.HasIndex(request => new { request.UserId, request.SubmittedAt });
+            entity.HasIndex(request => new { request.UserId, request.Status })
+                .HasFilter("[Status] = N'Pending'")
+                .IsUnique();
+            entity.HasOne(request => request.User)
+                .WithMany()
+                .HasForeignKey(request => request.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<AiUsageRecord>(entity =>
+        {
+            entity.Property(usage => usage.Feature).HasMaxLength(64);
+            entity.Property(usage => usage.Status)
+                .HasConversion<string>()
+                .HasMaxLength(20);
+            entity.Property(usage => usage.Model).HasMaxLength(80);
+            entity.HasIndex(usage => new { usage.UserId, usage.Status, usage.ReservedAt });
+            entity.HasOne(usage => usage.User)
+                .WithMany()
+                .HasForeignKey(usage => usage.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         builder.Entity<ResumeFileCleanup>(entity =>
