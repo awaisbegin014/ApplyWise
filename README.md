@@ -7,7 +7,7 @@
 [![.NET 10](https://img.shields.io/badge/.NET-10-512BD4)](https://dotnet.microsoft.com/)
 [![Public beta](https://img.shields.io/badge/status-public%20beta-0f766e)](https://applywise.runasp.net/)
 
-ApplyWise is a privacy-focused job-search workspace built with ASP.NET Core MVC. It connects application tracking, resume version management, explainable resume matching, interview planning, analytics, and a browser-based resume builder in one private account.
+ApplyWise is a privacy-focused job-search workspace built with ASP.NET Core MVC. It connects application tracking, resume version management, explainable resume matching, analytics, and a browser-based resume builder in one private account.
 
 ## Live product
 
@@ -27,7 +27,7 @@ Most job searches become fragmented across job boards, email, spreadsheets, cale
 2. Upload or build multiple resume versions.
 3. Compare resume evidence with the job description using deterministic local rules.
 4. Record the resume actually submitted for each application.
-5. Track interviews, outcomes, follow-ups, and application patterns.
+5. Track application outcomes, follow-ups, deadlines, and source patterns.
 
 Resume matching is intentionally explainable. This release does **not** send resume text to an external generative-AI service, and its estimates never claim to reproduce an employer's ATS or guarantee an interview.
 
@@ -60,7 +60,7 @@ Create a focused resume with guided sections, local draft saving, a live A4 prev
 - Browser-local resume builder with autosave, section reordering, formatting controls, A4 fit checks, and text-based PDF generation
 - Application tracking with status, source, deadline, job link, notes, custom fields, and submitted-resume history
 - Explainable readiness, job-match, and best-resume comparisons with evidence and analysis history
-- Interview scheduling, outcome tracking, deadlines, and dashboard next actions
+- Application outcome tracking, deadlines, and dashboard next actions
 - Funnel, resume-performance, platform-response, and recurring skill-gap analytics
 - Rule-based job-post quality and scam-risk reviews with private saved history
 - Admin monitoring, user reports, contact-message management, release health, and production diagnostics
@@ -89,7 +89,7 @@ ASP.NET Core MVC controllers
         |
 Application services
   |-- dashboard projections
-  |-- application and interview workflows
+  |-- application workflows
   |-- resume storage and bounded extraction
   |-- deterministic resume analysis
   |-- Gmail import review pipeline
@@ -163,7 +163,7 @@ Production values must come from environment variables or a host secret store. N
 | `DataProtection:*` | `DataProtection__KeysPath`, certificate path/password, previous certificates | Persistent encryption material |
 | `Performance:SlowRequestThresholdMs` | `Performance__SlowRequestThresholdMs` | Slow-request warning threshold |
 
-Google sign-in uses `/signin-google`. Gmail linking is a separate consent flow at `/signin-google-gmail` and requests `gmail.readonly`. Gmail access remains independently disabled unless its production switch is enabled and the required Google verification is complete.
+Google sign-in uses `/signin-google`. Gmail linking is a separate consent flow at `/signin-google-gmail` and requests `gmail.readonly`. Production enables Gmail import and scheduled sync through the protected deployment overlay; deployment approval must be withheld until the required Google verification is complete.
 
 ## Database migrations
 
@@ -233,7 +233,7 @@ Before a broad launch, move from the current free hosting tier to resources size
 
 ## Roadmap
 
-- Calendar integration for interviews and deadlines
+- Calendar integration for application deadlines
 - Managed private object storage and upload malware scanning
 - Formal retention, account export, and expanded deletion workflows
 - Staging load tests and capacity-based hosting upgrades

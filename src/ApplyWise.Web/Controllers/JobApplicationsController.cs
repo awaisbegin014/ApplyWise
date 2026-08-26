@@ -159,14 +159,7 @@ public class JobApplicationsController(
     {
         var application = await FindOwnedApplicationAsync(id, true, true);
         if (application is null) return NotFound();
-        var interviews = await dbContext.Interviews.AsNoTracking()
-            .Where(interview => interview.UserId == application.UserId && interview.JobApplicationId == application.Id)
-            .OrderByDescending(interview => interview.ScheduledAt)
-            .Take(3)
-            .Select(interview => new ApplicationInterviewSummaryViewModel(
-                interview.Id, interview.InterviewType, interview.Status, interview.ScheduledAt))
-            .ToListAsync();
-        return View(ToDetailsViewModel(application, interviews));
+        return View(ToDetailsViewModel(application));
     }
 
     [HttpGet("{id:int}/edit")]
@@ -387,13 +380,12 @@ public class JobApplicationsController(
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static JobApplicationDetailsViewModel ToDetailsViewModel(
-        JobApplication application,
-        IReadOnlyList<ApplicationInterviewSummaryViewModel>? interviews = null) =>
+        JobApplication application) =>
         new(application.Id, application.CompanyName, application.JobTitle, application.JobLocation,
             application.JobType, application.SalaryRange, application.Source, application.JobUrl,
             application.JobDescription, application.Status, application.Resume?.VersionName,
             application.AppliedDate, application.Deadline, application.Notes, ReadCustomFieldsForDetails(application.CustomFieldsJson),
-            application.CreatedAt, application.UpdatedAt, interviews);
+            application.CreatedAt, application.UpdatedAt);
 
     private static List<CustomApplicationFieldInput> ReadCustomFields(string? json)
     {

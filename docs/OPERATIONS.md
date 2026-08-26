@@ -91,7 +91,7 @@ Production startup rejects missing/private-key-free, non-RSA, undersized, expire
 
 ## Gmail release control
 
-Google sign-in and Gmail import have separate release controls. Keep `Google__GmailImportEnabled=false` until Google has approved the restricted Gmail scope and any required security assessment is complete. Enabling Google credentials alone exposes only basic Google sign-in. After approval, set the Gmail flag to `true`, deploy, connect a controlled mailbox, verify manual sync, then enable scheduled sync if desired.
+Google sign-in and Gmail import have separate release controls. The production workflow now sets `Google__GmailImportEnabled=true` and `Google__GmailAutoSyncEnabled=true`; approve that workflow only after Google has approved the restricted Gmail scope and any required security assessment is complete. After deployment, connect a controlled mailbox, verify manual sync, confirm an authenticated Indeed or LinkedIn confirmation is added automatically, and check that uncertain messages remain in review.
 
 ## Release evidence
 

@@ -19,10 +19,6 @@ public sealed record JobApplicationDetailsViewModel(
     string? Notes,
     IReadOnlyList<ApplicationCustomFieldViewModel> CustomFields,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt,
-    IReadOnlyList<ApplicationInterviewSummaryViewModel>? Interviews = null);
+    DateTimeOffset UpdatedAt);
 
 public sealed record ApplicationCustomFieldViewModel(string Label, string Value);
-
-public sealed record ApplicationInterviewSummaryViewModel(
-    int Id, InterviewType InterviewType, InterviewStatus Status, DateTimeOffset ScheduledAt);

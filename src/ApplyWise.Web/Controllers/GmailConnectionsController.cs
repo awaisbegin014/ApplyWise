@@ -222,7 +222,7 @@ public sealed class GmailConnectionsController(
                                 ConnectedAt = now,
                                 UpdatedAt = now,
                                 NextSyncAt = now,
-                                AutoAddHighConfidenceApplications = false
+                                AutoAddHighConfidenceApplications = true
                             };
                             dbContext.GmailConnections.Add(connection);
                         }

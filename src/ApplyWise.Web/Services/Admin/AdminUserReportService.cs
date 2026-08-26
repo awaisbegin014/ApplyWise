@@ -80,8 +80,7 @@ public sealed class AdminUserReportService(
                 dbContext.Resumes.Count(item => item.UserId == userId),
                 dbContext.ResumeAnalyses.Count(item => item.UserId == userId),
                 dbContext.JobApplications.Count(item => item.UserId == userId),
-                dbContext.ApplicationImports.Count(item => item.UserId == userId),
-                dbContext.Interviews.Count(item => item.UserId == userId)))
+                dbContext.ApplicationImports.Count(item => item.UserId == userId)))
             .SingleAsync(cancellationToken);
 
         var applicationStatusCounts = await dbContext.JobApplications
@@ -231,25 +230,6 @@ public sealed class AdminUserReportService(
                 item.CreatedAt))
             .ToListAsync(cancellationToken);
 
-        var latestInterviews = await (
-                from interview in dbContext.Interviews.AsNoTracking()
-                join application in dbContext.JobApplications.AsNoTracking()
-                    on interview.JobApplicationId equals application.Id
-                where interview.UserId == userId && application.UserId == userId
-                orderby interview.CreatedAt descending, interview.Id descending
-                select new AdminInterviewSummaryViewModel(
-                    interview.Id,
-                    interview.JobApplicationId,
-                    application.CompanyName,
-                    application.JobTitle,
-                    interview.InterviewType,
-                    interview.Status,
-                    interview.ScheduledAt,
-                    interview.CreatedAt,
-                    interview.UpdatedAt))
-            .Take(LatestItemLimit)
-            .ToListAsync(cancellationToken);
-
         var gmailConnection = await dbContext.GmailConnections
             .AsNoTracking()
             .Where(item => item.UserId == userId)
@@ -310,7 +290,6 @@ public sealed class AdminUserReportService(
                 PageSize,
                 importCount),
             LatestAnalyses = latestAnalyses,
-            LatestInterviews = latestInterviews,
             GmailConnection = gmailConnection,
             RecentEvents = recentEvents
         };

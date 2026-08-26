@@ -100,7 +100,6 @@
                         <a class="@(controller == "Dashboard" && action != "Settings" ? "active" : null)" aria-current="@(controller == "Dashboard" && action != "Settings" ? "page" : null)" asp-controller="Dashboard" asp-action="Index"><svg class="ui-icon"><use href="#i-grid" /></svg>Dashboard</a>
                         <a class="@(controller == "JobApplications" ? "active" : null)" aria-current="@(controller == "JobApplications" ? "page" : null)" asp-controller="JobApplications" asp-action="Index"><svg class="ui-icon"><use href="#i-briefcase" /></svg>Applications</a>
                         <a class="@(controller is "ApplicationImports" or "GmailConnections" ? "active" : null)" aria-current="@(controller is "ApplicationImports" or "GmailConnections" ? "page" : null)" asp-controller="ApplicationImports" asp-action="Index"><svg class="ui-icon"><use href="#i-mail" /></svg>Imports</a>
-                        <a class="@(controller == "Interviews" ? "active" : null)" aria-current="@(controller == "Interviews" ? "page" : null)" asp-controller="Interviews" asp-action="Index"><svg class="ui-icon"><use href="#i-calendar" /></svg>Interviews</a>
                     </div>
                     <div class="sidebar-nav-group" role="group" aria-labelledby="nav-resume-label">
                         <span class="sidebar-nav-label" id="nav-resume-label">Resume</span>

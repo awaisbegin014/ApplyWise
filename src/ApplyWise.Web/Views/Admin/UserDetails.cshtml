@@ -27,7 +27,6 @@
         <article class="metric-card admin-metric-card"><span>Analyses</span><strong>@Model.Totals.AnalysisCount</strong><small>ATS and job-match reports</small></article>
         <article class="metric-card admin-metric-card"><span>Applications</span><strong>@Model.Totals.ApplicationCount</strong><small>Tracked jobs</small></article>
         <article class="metric-card admin-metric-card"><span>Email imports</span><strong>@Model.Totals.ImportCount</strong><small>Detected messages</small></article>
-        <article class="metric-card admin-metric-card"><span>Interviews</span><strong>@Model.Totals.InterviewCount</strong><small>Scheduled records</small></article>
     </section>
 
     <section class="admin-content-grid admin-report-overview">
@@ -240,45 +239,24 @@
         </nav>
     </section>
 
-    <section class="admin-content-grid admin-report-overview">
-        <article class="panel admin-report-panel">
-            <header class="panel-heading"><div><span class="eyebrow">Quality</span><h3>Latest analyses</h3></div><small>Latest 25</small></header>
-            @if (Model.LatestAnalyses.Count == 0)
-            {
-                <div class="admin-empty admin-compact-empty"><strong>No analyses</strong><span>Scores will appear after a resume check.</span></div>
-            }
-            else
-            {
-                <div class="admin-timeline-list">
-                    @foreach (var analysis in Model.LatestAnalyses)
-                    {
-                        <article>
-                            <div><strong>@analysis.ResumeVersionName</strong><span>@analysis.AnalysisType · @analysis.CreatedAt.ToUniversalTime().ToString("MMM d, yyyy 'UTC'")</span><span>ATS @(analysis.AtsReadinessScore?.ToString() ?? "—") · job match @(analysis.JobMatchScore?.ToString() ?? "—") · confidence @(analysis.ConfidenceScore?.ToString() ?? "—")</span></div>
-                            <b aria-label="Overall match score @analysis.MatchScore out of 100">@analysis.MatchScore<small>/100</small></b>
-                        </article>
-                    }
-                </div>
-            }
-        </article>
-        <article class="panel admin-report-panel">
-            <header class="panel-heading"><div><span class="eyebrow">Pipeline</span><h3>Latest interviews</h3></div><small>Latest 25</small></header>
-            @if (Model.LatestInterviews.Count == 0)
-            {
-                <div class="admin-empty admin-compact-empty"><strong>No interviews</strong><span>Scheduled interviews will appear here.</span></div>
-            }
-            else
-            {
-                <div class="admin-timeline-list">
-                    @foreach (var interview in Model.LatestInterviews)
-                    {
-                        <article>
-                            <div><strong>@interview.JobTitle · @interview.CompanyName</strong><span>@interview.InterviewType · @interview.ScheduledAt.ToUniversalTime().ToString("MMM d, yyyy h:mm tt 'UTC'")</span></div>
-                            <span class="badge badge-neutral">@interview.Status</span>
-                        </article>
-                    }
-                </div>
-            }
-        </article>
+    <section class="panel admin-report-panel">
+        <header class="panel-heading"><div><span class="eyebrow">Quality</span><h3>Latest analyses</h3></div><small>Latest 25</small></header>
+        @if (Model.LatestAnalyses.Count == 0)
+        {
+            <div class="admin-empty admin-compact-empty"><strong>No analyses</strong><span>Scores will appear after a resume check.</span></div>
+        }
+        else
+        {
+            <div class="admin-timeline-list">
+                @foreach (var analysis in Model.LatestAnalyses)
+                {
+                    <article>
+                        <div><strong>@analysis.ResumeVersionName</strong><span>@analysis.AnalysisType · @analysis.CreatedAt.ToUniversalTime().ToString("MMM d, yyyy 'UTC'")</span><span>ATS @(analysis.AtsReadinessScore?.ToString() ?? "—") · job match @(analysis.JobMatchScore?.ToString() ?? "—") · confidence @(analysis.ConfidenceScore?.ToString() ?? "—")</span></div>
+                        <b aria-label="Overall match score @analysis.MatchScore out of 100">@analysis.MatchScore<small>/100</small></b>
+                    </article>
+                }
+            </div>
+        }
     </section>
 
     <section class="panel admin-report-panel">

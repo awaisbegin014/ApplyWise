@@ -11,7 +11,7 @@ Before a production rollout:
 3. Configure SMTP and verify delivery for confirmation, recovery, and sensitive-action codes. Never treat an accepted SMTP request as proof of inbox delivery.
 4. Put resumes, Data Protection keys, and the Data Protection certificate below a private persistent host directory, never `wwwroot`. Back up the encrypted key ring and restrict filesystem access to the application identity.
 5. Provision every owner with the offline `--provision-owner` command in [docs/OPERATIONS.md](docs/OPERATIONS.md). Public registration rejects configured owner addresses. Audit any pre-existing row before using the explicit completion flag; the command verifies TOTP and produces recovery codes without exposing a web bootstrap route.
-6. Finish Google OAuth verification and any restricted-scope security assessment before enabling Gmail imports for public users. Keep the feature disabled until this external approval is complete.
+6. Confirm Google OAuth verification and any required restricted-scope security assessment are complete for the production client. The release workflow enables read-only Gmail import and scheduled sync, so do not approve a deployment until that external gate is satisfied.
 7. Implement and record the monitors, alert routing, coordinated backups, retention, monthly restore rehearsal, and RPO/RTO evidence defined in [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
 ## Immutable release process

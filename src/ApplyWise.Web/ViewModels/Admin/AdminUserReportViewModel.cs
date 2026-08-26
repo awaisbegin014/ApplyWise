@@ -17,7 +17,6 @@ public sealed class AdminUserReportViewModel
     public required AdminPagedCollectionViewModel<AdminApplicationSummaryViewModel> Applications { get; init; }
     public required AdminPagedCollectionViewModel<AdminApplicationImportSummaryViewModel> Imports { get; init; }
     public IReadOnlyList<AdminResumeAnalysisSummaryViewModel> LatestAnalyses { get; init; } = [];
-    public IReadOnlyList<AdminInterviewSummaryViewModel> LatestInterviews { get; init; } = [];
     public AdminGmailConnectionViewModel? GmailConnection { get; init; }
     public IReadOnlyList<AdminProductEventViewModel> RecentEvents { get; init; } = [];
 }
@@ -56,8 +55,7 @@ public sealed record AdminUserTotalsViewModel(
     int ResumeCount,
     int AnalysisCount,
     int ApplicationCount,
-    int ImportCount,
-    int InterviewCount);
+    int ImportCount);
 
 public sealed record AdminApplicationStatusCountViewModel(
     ApplicationStatus Status,
@@ -127,17 +125,6 @@ public sealed record AdminResumeAnalysisSummaryViewModel(
     double? EvidenceQuality,
     string? ScoreVersion,
     DateTimeOffset CreatedAt);
-
-public sealed record AdminInterviewSummaryViewModel(
-    int Id,
-    int JobApplicationId,
-    string CompanyName,
-    string JobTitle,
-    InterviewType InterviewType,
-    InterviewStatus Status,
-    DateTimeOffset ScheduledAt,
-    DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
 
 public sealed record AdminGmailConnectionViewModel(
     string EmailAddress,

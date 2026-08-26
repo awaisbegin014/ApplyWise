@@ -8,14 +8,11 @@ public sealed class DashboardViewModel
     public string DisplayName { get; set; } = "there";
     public DateTimeOffset CurrentTime { get; set; }
     public int TotalApplications { get; set; }
-    public int TotalInterviewCount { get; set; }
     public double AverageMatchScore { get; set; }
-    public int UpcomingInterviewCount { get; set; }
     public int TodayActionCount { get; set; }
     public ApplicationFunnelResult Funnel { get; set; } = new(0, 0, 0, 0, 0, 0, 0, 0);
     public string? BestResumeVersionName { get; set; }
     public double BestResumeScore { get; set; }
-    public IReadOnlyList<DashboardInterviewItemViewModel> UpcomingInterviews { get; set; } = [];
     public IReadOnlyList<DashboardDeadlineItemViewModel> UpcomingDeadlines { get; set; } = [];
     public IReadOnlyList<DashboardActionItemViewModel> TodayActions { get; set; } = [];
     public IReadOnlyList<SkillGapTrendItem> TopSkillGaps { get; set; } = [];
@@ -23,9 +20,6 @@ public sealed class DashboardViewModel
     public IReadOnlyList<RecentApplicationItem> PipelineApplications { get; set; } = [];
     public IReadOnlyList<RecentAnalysisItem> RecentAnalyses { get; set; } = [];
 }
-
-public sealed record DashboardInterviewItemViewModel(
-    int Id, string CompanyName, string JobTitle, InterviewType InterviewType, DateTimeOffset ScheduledAt);
 
 public sealed record DashboardDeadlineItemViewModel(
     int Id, string CompanyName, string JobTitle, DateOnly Deadline);

@@ -37,7 +37,6 @@ public sealed class AdminDashboardService(
             [ProductEventNames.ResumeUploaded] = "Resumes uploaded",
             [ProductEventNames.ResumeAnalysisCompleted] = "Analyses completed",
             [ProductEventNames.ApplicationCreated] = "Applications created",
-            [ProductEventNames.InterviewScheduled] = "Interviews scheduled",
             [ProductEventNames.ScamCheckCompleted] = "Scam checks completed"
         };
     private static readonly string[] AggregatedEventNames = EventLabels.Keys.ToArray();
@@ -91,8 +90,7 @@ public sealed class AdminDashboardService(
                 OnboardingCompleted = profile != null && profile.OnboardingCompletedAt != null,
                 ResumeCount = dbContext.Resumes.Count(resume => resume.UserId == user.Id),
                 AnalysisCount = dbContext.ResumeAnalyses.Count(analysis => analysis.UserId == user.Id),
-                ApplicationCount = dbContext.JobApplications.Count(application => application.UserId == user.Id),
-                InterviewCount = dbContext.Interviews.Count(interview => interview.UserId == user.Id)
+                ApplicationCount = dbContext.JobApplications.Count(application => application.UserId == user.Id)
             };
 
         var totalMatchingUsers = await usersQuery.CountAsync(cancellationToken);
@@ -240,9 +238,6 @@ public sealed class AdminDashboardService(
             TotalAnalyses = await dbContext.ResumeAnalyses.CountAsync(
                 analysis => !adminUserIds.Contains(analysis.UserId),
                 cancellationToken),
-            TotalInterviews = await dbContext.Interviews.CountAsync(
-                interview => !adminUserIds.Contains(interview.UserId),
-                cancellationToken),
             TotalContactMessages = await dbContext.ContactMessages.CountAsync(cancellationToken),
             UnreadContactMessages = await dbContext.ContactMessages.CountAsync(
                 message => message.ReadAt == null,
@@ -260,7 +255,6 @@ public sealed class AdminDashboardService(
                 user.ResumeCount,
                 user.AnalysisCount,
                 user.ApplicationCount,
-                user.InterviewCount,
                 user.OnboardingCompleted)).ToArray(),
             DailyActivity = dailyActivity,
             FeatureUsage = featureUsage,
