@@ -7,6 +7,7 @@ public static class GmailAuthenticationDefaults
     public const string FlowClaimType = "applywise:google_flow";
     public const string FlowClaimValue = "gmail_connection";
     public const string FlowIdProperty = "ApplyWise.Gmail.FlowId";
+    public const int FlowIdHexLength = 64;
 }
 
 public static class GmailConnectionStates

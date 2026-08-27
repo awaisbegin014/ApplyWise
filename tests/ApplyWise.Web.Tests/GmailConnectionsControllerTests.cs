@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Controllers;
+using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
@@ -25,6 +26,74 @@ public sealed class GmailConnectionsControllerTests
 {
     private const string UserId = "gmail-controller-user";
     private const string FlowId = "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF";
+
+    [Fact]
+    public async Task Connect_CreatesCallbackCompatibleFlowIdentifier()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddControllersWithViews();
+        services.AddAuthentication();
+        services.AddDbContext<ApplicationDbContext>(options =>
+            options.UseInMemoryDatabase(
+                "gmail-connect-" + Guid.NewGuid().ToString("N")));
+        services.AddIdentityCore<IdentityUser>()
+            .AddEntityFrameworkStores<ApplicationDbContext>()
+            .AddSignInManager();
+        await using var provider = services.BuildServiceProvider();
+        var db = provider.GetRequiredService<ApplicationDbContext>();
+        db.Users.Add(new IdentityUser
+        {
+            Id = UserId,
+            UserName = "candidate@example.test"
+        });
+        await db.SaveChangesAsync();
+
+        var httpContext = new DefaultHttpContext
+        {
+            RequestServices = provider,
+            User = new ClaimsPrincipal(new ClaimsIdentity(
+                [new Claim(ClaimTypes.NameIdentifier, UserId)],
+                authenticationType: "Test"))
+        };
+        var controller = new GmailConnectionsController(
+            db,
+            provider.GetRequiredService<UserManager<IdentityUser>>(),
+            provider.GetRequiredService<SignInManager<IdentityUser>>(),
+            new PassThroughCredentialProtector(),
+            new UnusedGmailImportService(),
+            new ImmediateApplicationLockProvider(),
+            new StubHttpClientFactory(new RecordingRevocationHandler()),
+            Options.Create(new GoogleIntegrationOptions
+            {
+                ClientId = "fictional-client.apps.googleusercontent.com",
+                ClientSecret = "fictional-client-secret",
+                GmailImportEnabled = true
+            }),
+            NullLogger<GmailConnectionsController>.Instance)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = httpContext,
+                RouteData = new RouteData(),
+                ActionDescriptor = new ControllerActionDescriptor()
+            },
+            TempData = new TempDataDictionary(
+                httpContext,
+                new InMemoryTempDataProvider()),
+            Url = new StubUrlHelper()
+        };
+
+        var result = Assert.IsType<ChallengeResult>(await controller.Connect());
+
+        Assert.Contains(GmailAuthenticationDefaults.Scheme, result.AuthenticationSchemes);
+        var challengedFlowId = Assert.IsType<string>(
+            result.Properties!.Items[GmailAuthenticationDefaults.FlowIdProperty]);
+        Assert.Equal(GmailAuthenticationDefaults.FlowIdHexLength, challengedFlowId.Length);
+        Assert.All(challengedFlowId, character => Assert.True(Uri.IsHexDigit(character)));
+        var storedFlow = await db.GmailOAuthFlows.SingleAsync();
+        Assert.Equal(challengedFlowId, storedFlow.FlowId);
+    }
 
     [Theory]
     [InlineData(HttpStatusCode.OK)]
@@ -453,5 +522,21 @@ public sealed class GmailConnectionsControllerTests
             IDictionary<string, object> values)
         {
         }
+    }
+
+    private sealed class StubUrlHelper : IUrlHelper
+    {
+        public ActionContext ActionContext { get; } = new();
+
+        public string? Action(UrlActionContext actionContext) =>
+            "/connections/gmail/callback";
+
+        public string? Content(string? contentPath) => contentPath;
+
+        public bool IsLocalUrl(string? url) => true;
+
+        public string? Link(string? routeName, object? values) => null;
+
+        public string? RouteUrl(UrlRouteContext routeContext) => null;
     }
 }

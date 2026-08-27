@@ -51,7 +51,8 @@ public sealed class GmailConnectionsController(
 
         var user = await userManager.GetUserAsync(User);
         if (user is null) return Challenge();
-        var flowId = RandomNumberGenerator.GetHexString(32);
+        var flowId = RandomNumberGenerator.GetHexString(
+            GmailAuthenticationDefaults.FlowIdHexLength);
         await using (var operationLease = await operationLocks.TryAcquireAsync(
             $"gmail-user:{user.Id}",
             Timeout.InfiniteTimeSpan,
@@ -148,7 +149,7 @@ public sealed class GmailConnectionsController(
 
             if (string.IsNullOrWhiteSpace(email)
                 || string.IsNullOrWhiteSpace(flowId)
-                || flowId.Length != 64)
+                || flowId.Length != GmailAuthenticationDefaults.FlowIdHexLength)
             {
                 TempData["ImportError"] =
                     "Google did not provide a valid Gmail connection response. Start a new connection request.";
