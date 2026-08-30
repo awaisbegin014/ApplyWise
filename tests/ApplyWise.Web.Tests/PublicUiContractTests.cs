@@ -23,8 +23,7 @@ public sealed class PublicUiContractTests
             "<nav class=\"aw-home-nav\" id=\"public-navigation\" aria-label=\"Primary navigation\" data-home-nav>",
             layout,
             StringComparison.Ordinal);
-        AssertBefore(layout, "asp-action=\"JobTracker\"", "asp-action=\"ResumeMatch\"");
-        AssertBefore(layout, "asp-action=\"ResumeMatch\"", "asp-action=\"ResumeBuilder\"");
+        AssertBefore(layout, "asp-action=\"JobTracker\"", "asp-action=\"ResumeBuilder\"");
         AssertBefore(layout, "asp-action=\"ResumeBuilder\"", "asp-action=\"HowItWorks\"");
         AssertBefore(layout, "asp-action=\"HowItWorks\"", "asp-controller=\"Contact\" asp-action=\"Index\"");
 
@@ -84,7 +83,7 @@ public sealed class PublicUiContractTests
     }
 
     [Fact]
-    public void Product_navigation_opens_four_distinct_explanatory_pages()
+    public void Product_navigation_opens_three_distinct_explanatory_pages()
     {
         var controller = ReadSource("src", "ApplyWise.Web", "Controllers", "HomeController.cs");
         var layout = ReadSource("src", "ApplyWise.Web", "Views", "Shared", "_Layout.cshtml");
@@ -93,18 +92,19 @@ public sealed class PublicUiContractTests
         var productContent = ReadSource("src", "ApplyWise.Web", "ViewModels", "Home", "MarketingProductPageViewModel.cs");
 
         Assert.Contains("[HttpGet(\"/product/job-tracker\")]", controller, StringComparison.Ordinal);
-        Assert.Contains("[HttpGet(\"/product/resume-match\")]", controller, StringComparison.Ordinal);
         Assert.Contains("[HttpGet(\"/product/resume-builder\")]", controller, StringComparison.Ordinal);
         Assert.Contains("[HttpGet(\"/product/how-it-works\")]", controller, StringComparison.Ordinal);
+        Assert.DoesNotContain("/product/resume-match", controller, StringComparison.Ordinal);
 
         Assert.Contains("asp-action=\"JobTracker\"", layout, StringComparison.Ordinal);
-        Assert.Contains("asp-action=\"ResumeMatch\"", layout, StringComparison.Ordinal);
         Assert.Contains("asp-action=\"ResumeBuilder\"", layout, StringComparison.Ordinal);
         Assert.Contains("asp-action=\"HowItWorks\"", layout, StringComparison.Ordinal);
+        Assert.DoesNotContain("asp-action=\"ResumeMatch\"", layout, StringComparison.Ordinal);
         Assert.DoesNotContain("href=\"#job-tracker\">Job tracker", layout, StringComparison.Ordinal);
 
         Assert.Contains("asp-action=\"JobTracker\"", homepage, StringComparison.Ordinal);
-        Assert.Contains("asp-action=\"ResumeMatch\"", homepage, StringComparison.Ordinal);
+        Assert.Contains("asp-controller=\"ResumeAnalyzer\" asp-action=\"Index\"", homepage, StringComparison.Ordinal);
+        Assert.DoesNotContain("asp-action=\"ResumeMatch\"", homepage, StringComparison.Ordinal);
         Assert.Contains("asp-action=\"ResumeBuilder\"", homepage, StringComparison.Ordinal);
         Assert.Contains("asp-action=\"HowItWorks\"", homepage, StringComparison.Ordinal);
 

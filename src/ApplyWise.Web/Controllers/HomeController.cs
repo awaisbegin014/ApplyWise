@@ -23,12 +23,6 @@ public class HomeController : Controller
         return View("Product", MarketingProductPages.JobTracker);
     }
 
-    [HttpGet("/product/resume-match")]
-    public IActionResult ResumeMatch()
-    {
-        return View("Product", MarketingProductPages.ResumeMatch);
-    }
-
     [HttpGet("/product/resume-builder")]
     public IActionResult ResumeBuilder()
     {

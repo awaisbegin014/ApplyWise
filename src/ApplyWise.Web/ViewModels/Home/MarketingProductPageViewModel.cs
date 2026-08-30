@@ -57,34 +57,6 @@ public static class MarketingProductPages
         ToolAction: "Index",
         ToolCtaLabel: "Open job tracker");
 
-    public static MarketingProductPageViewModel ResumeMatch { get; } = new(
-        Accent: "match",
-        MetaTitle: "Resume match and comparison",
-        MetaDescription: "Learn how ApplyWise compares resume evidence with job requirements using local, explainable rules.",
-        Eyebrow: "Resume match",
-        Title: "Choose the resume with the strongest evidence.",
-        Lead: "ApplyWise compares what a role asks for with what your resume actually demonstrates, so you can make a reasoned choice between versions.",
-        DefinitionTitle: "An explainable resume-to-job comparison",
-        Definition: "Resume match extracts requirements from the job description and uses deterministic local rules to show supported, weak, and missing evidence in each resume.",
-        DesignedFor: "Job seekers who keep multiple resume versions or want practical guidance before tailoring a resume for one role.",
-        Features: new[]
-        {
-            new MarketingProductFeature("i-match", "Requirement-level evidence", "Review matched and missing requirements instead of relying on a single unexplained number."),
-            new MarketingProductFeature("i-file", "Version comparison", "Compare readable saved resumes against the same role and see which version provides the stronger starting point."),
-            new MarketingProductFeature("i-edit-file", "Practical improvement guidance", "Focus on truthful evidence, clearer placement, and meaningful gaps rather than repeating keywords.")
-        },
-        Steps: new[]
-        {
-            new MarketingProductStep("Provide the real job description", "Use the employer's wording so the comparison is grounded in the role you are considering."),
-            new MarketingProductStep("Choose one or more resumes", "Select a saved PDF or DOCX version with readable text for analysis."),
-            new MarketingProductStep("Review the evidence", "Use the matched, missing, and improvement sections to choose or refine the best-supported version.")
-        },
-        CtaTitle: "Make the resume choice explainable.",
-        CtaDescription: "Compare real evidence before deciding what to send.",
-        ToolController: "ResumeAnalyzer",
-        ToolAction: "Index",
-        ToolCtaLabel: "Compare a resume");
-
     public static MarketingProductPageViewModel ResumeBuilder { get; } = new(
         Accent: "builder",
         MetaTitle: "Guided resume builder",

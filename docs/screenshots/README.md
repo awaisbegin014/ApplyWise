@@ -4,7 +4,6 @@ The repository includes privacy-safe public product screenshots captured from th
 
 - `applywise-home.png`
 - `applywise-job-tracker.png`
-- `applywise-resume-match.png`
 - `applywise-resume-builder.png`
 
 These files are used by the main README and contain no account or production data.
