@@ -83,6 +83,10 @@ public sealed class ApplicationImportsController(
             GoogleIntegrationConfigured = googleOptions.Value.IsGmailImportConfigured,
             AutoAddHighConfidenceApplications =
                 connection?.AutoAddHighConfidenceApplications ?? false,
+            AutomaticSyncIntervalMinutes = Math.Clamp(
+                googleOptions.Value.GmailSyncIntervalMinutes,
+                5,
+                24 * 60),
             GmailConnection = connection,
             PendingImports = pendingImports,
             RecentlyAutoAddedApplications = recentlyAutoAdded

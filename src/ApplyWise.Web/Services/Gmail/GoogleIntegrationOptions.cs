@@ -8,7 +8,7 @@ public sealed class GoogleIntegrationOptions
     public string ClientSecret { get; set; } = string.Empty;
     public bool GmailImportEnabled { get; set; }
     public bool GmailAutoSyncEnabled { get; set; } = true;
-    public int GmailSyncIntervalMinutes { get; set; } = 15;
+    public int GmailSyncIntervalMinutes { get; set; } = 5;
     public int GmailInitialLookbackDays { get; set; } = 30;
     public int GmailMaxMessagesPerSync { get; set; } = 100;
     public int GmailSyncTimeoutSeconds { get; set; } = 120;

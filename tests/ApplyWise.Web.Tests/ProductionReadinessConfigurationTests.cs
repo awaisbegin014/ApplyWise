@@ -153,6 +153,7 @@ public sealed class ProductionReadinessConfigurationTests
         Assert.Contains("Google__ClientSecret", workflow, StringComparison.Ordinal);
         Assert.Contains("\"Google__GmailImportEnabled\" = \"true\"", workflow, StringComparison.Ordinal);
         Assert.Contains("\"Google__GmailAutoSyncEnabled\" = \"true\"", workflow, StringComparison.Ordinal);
+        Assert.Contains("\"Google__GmailSyncIntervalMinutes\" = \"5\"", workflow, StringComparison.Ordinal);
         Assert.Contains("MONSTER_WEBSITE_NAME: ${{ secrets.MONSTER_SERVER_USERNAME }}", workflow, StringComparison.Ordinal);
         Assert.Contains("website-name: ${{ secrets.MONSTER_SERVER_USERNAME }}", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("inputs.website_name", workflow, StringComparison.Ordinal);

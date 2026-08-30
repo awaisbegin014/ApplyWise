@@ -7,6 +7,7 @@ public sealed class ApplicationImportIndexViewModel
 {
     public bool GoogleIntegrationConfigured { get; init; }
     public bool AutoAddHighConfidenceApplications { get; init; }
+    public int AutomaticSyncIntervalMinutes { get; init; }
     public GmailConnectionSummaryViewModel? GmailConnection { get; init; }
     public IReadOnlyList<ApplicationImportListItemViewModel> PendingImports { get; init; } = [];
     public IReadOnlyList<RecentlyAutoAddedApplicationViewModel> RecentlyAutoAddedApplications { get; init; } = [];

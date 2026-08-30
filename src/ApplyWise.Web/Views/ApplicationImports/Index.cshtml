@@ -79,12 +79,21 @@
             <small>
                 @if (connection.LastSuccessfulSyncAt.HasValue)
                 {
-                    <text>Last synced @connection.LastSuccessfulSyncAt.Value.ToLocalTime().ToString("MMM d, yyyy h:mm tt").</text>
+                    var lastSuccessfulSync = connection.LastSuccessfulSyncAt.Value;
+                    <text>
+                        Last synced
+                        <time datetime="@lastSuccessfulSync.ToUniversalTime().ToString("O")"
+                              data-local-date-time>@lastSuccessfulSync.ToUniversalTime().ToString("MMM d, yyyy h:mm tt 'UTC'")</time>.
+                    </text>
                 }
                 else
                 {
                     <text>Waiting for the first successful sync.</text>
                 }
+            </small>
+            <small>
+                New confirmations are checked automatically about every @Model.AutomaticSyncIntervalMinutes minutes.
+                <strong>Sync now</strong> is only an optional immediate check.
             </small>
             @if (isRevocationPending)
             {
