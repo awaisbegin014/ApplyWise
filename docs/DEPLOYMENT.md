@@ -37,6 +37,7 @@ DataProtection__CertificatePath=<absolute path to a mounted PFX or encrypted PEM
 DataProtection__CertificatePassword=<certificate password>
 Google__GmailImportEnabled=true
 Google__GmailAutoSyncEnabled=true
+Google__GmailSyncIntervalMinutes=5
 Gemini__Enabled=true
 Gemini__ApiKey=<server-side Gemini API key>
 Gemini__Model=<approved Gemini model>

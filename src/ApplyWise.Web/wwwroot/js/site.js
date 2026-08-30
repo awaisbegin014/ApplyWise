@@ -113,6 +113,25 @@
     }
 })();
 
+(() => {
+    const formatter = new Intl.DateTimeFormat(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit'
+    });
+
+    document.querySelectorAll('time[data-local-date-time]').forEach((element) => {
+        const value = element.getAttribute('datetime');
+        if (!value) return;
+
+        const instant = new Date(value);
+        if (Number.isNaN(instant.getTime())) return;
+        element.textContent = formatter.format(instant);
+    });
+})();
+
 document.querySelectorAll('[data-password-toggle]').forEach((button) => {
     const inputId = button.getAttribute('aria-controls');
     const input = inputId ? document.getElementById(inputId) : null;

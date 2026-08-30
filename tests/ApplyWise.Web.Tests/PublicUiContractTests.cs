@@ -6,6 +6,32 @@ namespace ApplyWise.Web.Tests;
 public sealed class PublicUiContractTests
 {
     [Fact]
+    public void Gmail_import_status_uses_browser_local_time_and_explains_the_polling_interval()
+    {
+        var imports = ReadSource(
+            "src",
+            "ApplyWise.Web",
+            "Views",
+            "ApplicationImports",
+            "Index.cshtml");
+        var siteScript = ReadSource(
+            "src",
+            "ApplyWise.Web",
+            "wwwroot",
+            "js",
+            "site.js");
+
+        Assert.Contains("data-local-date-time", imports, StringComparison.Ordinal);
+        Assert.Contains("ToUniversalTime().ToString(\"O\")", imports, StringComparison.Ordinal);
+        Assert.Contains(
+            "New confirmations are checked automatically about every @Model.AutomaticSyncIntervalMinutes minutes.",
+            imports,
+            StringComparison.Ordinal);
+        Assert.Contains("time[data-local-date-time]", siteScript, StringComparison.Ordinal);
+        Assert.Contains("new Intl.DateTimeFormat", siteScript, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Contact_form_exposes_visible_and_native_required_field_semantics()
     {
         var contact = ReadSource("src", "ApplyWise.Web", "Views", "Contact", "Index.cshtml");
