@@ -7,12 +7,27 @@ public static class GmailOAuthFailure
     public const string Expired = "expired";
     public const string GoogleUnavailable = "google_unavailable";
     public const string Configuration = "configuration";
+    public const string AccessBlocked = "access_blocked";
     public const string Failed = "failed";
 
-    public static string Classify(string? providerError, Exception? failure)
+    public static string Classify(
+        string? providerError,
+        Exception? failure,
+        string? providerDescription = null)
     {
         var normalizedError = providerError?.Trim().ToLowerInvariant();
-        if (normalizedError == "access_denied") return Cancelled;
+        if (normalizedError == "access_denied")
+        {
+            return LooksLikeAccessPolicyBlock(providerDescription)
+                   || LooksLikeAccessPolicyBlock(failure?.Message)
+                ? AccessBlocked
+                : Cancelled;
+        }
+
+        if (normalizedError is "admin_policy_enforced" or "org_internal")
+        {
+            return AccessBlocked;
+        }
 
         if (normalizedError is "server_error" or "temporarily_unavailable")
         {
@@ -49,6 +64,21 @@ public static class GmailOAuthFailure
         return Failed;
     }
 
+    private static bool LooksLikeAccessPolicyBlock(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return false;
+
+        return value.Contains("test user", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("currently being tested", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("developer hasn't given you access", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("developer has not given you access", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("access blocked", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("admin_policy_enforced", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("org_internal", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("organization's administrator", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("organisation's administrator", StringComparison.OrdinalIgnoreCase);
+    }
+
     public static string GetUserMessage(string? reason) => reason switch
     {
         Cancelled =>
@@ -59,6 +89,8 @@ public static class GmailOAuthFailure
             "Google could not complete the Gmail connection right now. Your account remains disconnected. Wait a moment, then try again.",
         Configuration =>
             "Google rejected the Gmail connection configuration. An administrator must check the OAuth client, Gmail permission, test-user access, and callback URL before you try again.",
+        AccessBlocked =>
+            "Google blocked this account from granting Gmail access. If ApplyWise is still in OAuth testing, its administrator must add this exact Google account as a test user. For a school or work Google Workspace account, the Workspace administrator may also need to allow the ApplyWise OAuth client and Gmail read-only access.",
         _ =>
             "Gmail could not be connected. No Gmail access was saved. Start a new request from this page; if it fails again, ask the administrator to review the Google OAuth configuration."
     };

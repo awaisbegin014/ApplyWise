@@ -72,6 +72,76 @@ public sealed class ApplicationEmailParserTests
             result.Confidence >= ApplicationImportPolicy.HighConfidenceThreshold);
     }
 
+    [Theory]
+    [InlineData("indeed.com")]
+    [InlineData("indeedemail.com")]
+    [InlineData("indeedmail.com")]
+    [InlineData("notifications.indeedemail.com")]
+    public void Parse_OfficialIndeedDomains_AreEligibleForAutomaticAdd(
+        string senderDomain)
+    {
+        var message = Message(
+            subject: "Indeed Application: Software Engineer",
+            from: $"Indeed Apply <applications@{senderDomain}>",
+            body: "The following items were sent to Contoso.",
+            labels: ["INBOX"],
+            authenticationResults:
+                $"mx.google.com; dkim=pass header.i=@{senderDomain}; "
+                + $"spf=pass smtp.mailfrom={senderDomain}; "
+                + $"dmarc=pass (p=REJECT) header.from={senderDomain}");
+
+        var result = _parser.Parse(message);
+
+        Assert.NotNull(result);
+        Assert.Equal(JobSource.Indeed, result.Source);
+        Assert.Equal("Contoso", result.CompanyName);
+        Assert.Equal("Software Engineer", result.JobTitle);
+        Assert.True(
+            result.Confidence >= ApplicationImportPolicy.HighConfidenceThreshold);
+    }
+
+    [Fact]
+    public void Parse_ModernIndeedSubject_SeparatesJobTitleAndCompany()
+    {
+        var message = Message(
+            subject: "Application submitted: Software Engineer at Contoso",
+            from: "Indeed Apply <applications@indeedmail.com>",
+            body: "Your application has been submitted.",
+            labels: ["INBOX"],
+            authenticationResults:
+                "mx.google.com; dkim=pass header.i=@indeedmail.com; "
+                + "spf=pass smtp.mailfrom=indeedmail.com; "
+                + "dmarc=pass (p=REJECT) header.from=indeedmail.com");
+
+        var result = _parser.Parse(message);
+
+        Assert.NotNull(result);
+        Assert.Equal(JobSource.Indeed, result.Source);
+        Assert.Equal("Contoso", result.CompanyName);
+        Assert.Equal("Software Engineer", result.JobTitle);
+        Assert.True(
+            result.Confidence >= ApplicationImportPolicy.HighConfidenceThreshold);
+    }
+
+    [Fact]
+    public void Parse_OfficialIndeedSender_WinsOverLinksMentionedInFooter()
+    {
+        var message = Message(
+            subject: "Indeed Application: Software Engineer",
+            from: "Indeed Apply <applications@indeedemail.com>",
+            body:
+                "The following items were sent to Contoso. "
+                + "Follow the employer on LinkedIn.",
+            labels: ["INBOX"],
+            authenticationResults:
+                "mx.google.com; dmarc=pass header.from=indeedemail.com");
+
+        var result = _parser.Parse(message);
+
+        Assert.NotNull(result);
+        Assert.Equal(JobSource.Indeed, result.Source);
+    }
+
     [Fact]
     public void Parse_IndeedApplySubjectFromUntrustedDomain_ReturnsNull()
     {

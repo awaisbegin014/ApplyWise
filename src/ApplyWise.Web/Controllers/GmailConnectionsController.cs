@@ -136,7 +136,10 @@ public sealed class GmailConnectionsController(
                 return RedirectToAction("Index", "ApplicationImports");
             }
 
-            var email = info.Principal.FindFirstValue(ClaimTypes.Email)?.Trim();
+            var email = (
+                    info.Principal.FindFirstValue(ClaimTypes.Email)
+                    ?? info.Principal.FindFirstValue("email"))
+                ?.Trim();
             var refreshToken = info.AuthenticationTokens?
                 .FirstOrDefault(token => token.Name == "refresh_token")?
                 .Value;
@@ -147,12 +150,23 @@ public sealed class GmailConnectionsController(
                     ? storedFlowId
                     : null;
 
-            if (string.IsNullOrWhiteSpace(email)
-                || string.IsNullOrWhiteSpace(flowId)
-                || flowId.Length != GmailAuthenticationDefaults.FlowIdHexLength)
+            var emailMissing = string.IsNullOrWhiteSpace(email);
+            var flowIdMissing = string.IsNullOrWhiteSpace(flowId);
+            var flowIdHasValidLength = !flowIdMissing
+                && flowId!.Length == GmailAuthenticationDefaults.FlowIdHexLength;
+            var flowIdHasValidFormat = flowIdHasValidLength
+                && flowId!.All(Uri.IsHexDigit);
+            if (emailMissing || !flowIdHasValidFormat)
             {
-                TempData["ImportError"] =
-                    "Google did not provide a valid Gmail connection response. Start a new connection request.";
+                logger.LogWarning(
+                    "Gmail callback validation failed. Missing email claim: {MissingEmailClaim}; missing flow identifier: {MissingFlowIdentifier}; valid flow length: {ValidFlowLength}; valid flow format: {ValidFlowFormat}.",
+                    emailMissing,
+                    flowIdMissing,
+                    flowIdHasValidLength,
+                    flowIdHasValidFormat);
+                TempData["ImportError"] = emailMissing
+                    ? "Google authenticated the account but did not return its email address. For a school or work Google Workspace account, confirm that Gmail and profile access are allowed, then start a new connection request."
+                    : "That Gmail connection request expired or lost its browser session. Return here, click Connect Gmail once, and finish Google's screens in the same browser session.";
                 return RedirectToAction("Index", "ApplicationImports");
             }
 
@@ -217,7 +231,7 @@ public sealed class GmailConnectionsController(
                             connection = new GmailConnection
                             {
                                 UserId = user.Id,
-                                EmailAddress = email,
+                                EmailAddress = email!,
                                 ProtectedRefreshToken =
                                     credentialProtector.Protect(refreshToken!),
                                 ConnectedAt = now,
@@ -229,7 +243,7 @@ public sealed class GmailConnectionsController(
                         }
                         else
                         {
-                            connection.EmailAddress = email;
+                            connection.EmailAddress = email!;
                             if (!string.IsNullOrWhiteSpace(refreshToken))
                             {
                                 connection.ProtectedRefreshToken =
