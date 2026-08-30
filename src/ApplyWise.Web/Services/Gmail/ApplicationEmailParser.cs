@@ -40,6 +40,7 @@ public sealed partial class ApplicationEmailParser : IApplicationEmailParser
     private static readonly HashSet<string> GenericDomains = new(StringComparer.OrdinalIgnoreCase)
     {
         "gmail", "googlemail", "outlook", "hotmail", "yahoo", "linkedin", "indeed",
+        "indeedemail", "indeedmail",
         "greenhouse", "lever", "workday", "smartrecruiters", "icims", "jobvite", "ashbyhq"
     };
 
@@ -78,7 +79,7 @@ public sealed partial class ApplicationEmailParser : IApplicationEmailParser
             return null;
         }
 
-        var source = DetectSource(searchable, message.From, direction);
+        var source = DetectSource(searchable, message.From, senderDomain, direction);
         var trustedIncomingDomain = direction == ApplicationImportDirection.Incoming
             && IsTrustedAutoAddDomain(senderDomain)
             && HasGoogleAuthenticatedFrom(message.AuthenticationResults, senderDomain);
@@ -110,8 +111,18 @@ public sealed partial class ApplicationEmailParser : IApplicationEmailParser
     private static JobSource DetectSource(
         string searchable,
         string from,
+        string? senderDomain,
         ApplicationImportDirection direction)
     {
+        if (direction == ApplicationImportDirection.Incoming)
+        {
+            if (IsIndeedDomain(senderDomain)) return JobSource.Indeed;
+            if (IsDomainOrSubdomain(senderDomain, "linkedin.com"))
+            {
+                return JobSource.LinkedIn;
+            }
+        }
+
         var sourceText = $"{from}\n{searchable}";
         if (sourceText.Contains("linkedin", StringComparison.OrdinalIgnoreCase)) return JobSource.LinkedIn;
         if (sourceText.Contains("indeed", StringComparison.OrdinalIgnoreCase)) return JobSource.Indeed;
@@ -125,6 +136,14 @@ public sealed partial class ApplicationEmailParser : IApplicationEmailParser
         string subject,
         string body)
     {
+        var subjectJobAtCompanyMatch = SubjectJobAtCompanyRegex().Match(subject);
+        if (subjectJobAtCompanyMatch.Success)
+        {
+            return (
+                CleanCandidate(subjectJobAtCompanyMatch.Groups["company"].Value),
+                CleanCandidate(subjectJobAtCompanyMatch.Groups["job"].Value));
+        }
+
         var subjectMatch = JobAtCompanyRegex().Match(subject);
         if (subjectMatch.Success)
         {
@@ -254,8 +273,9 @@ public sealed partial class ApplicationEmailParser : IApplicationEmailParser
 
     private static bool IsIndeedDomain(string? domain) =>
         !string.IsNullOrWhiteSpace(domain)
-        && (domain.Equals("indeed.com", StringComparison.OrdinalIgnoreCase)
-            || domain.EndsWith(".indeed.com", StringComparison.OrdinalIgnoreCase));
+        && (IsDomainOrSubdomain(domain, "indeed.com")
+            || IsDomainOrSubdomain(domain, "indeedemail.com")
+            || IsDomainOrSubdomain(domain, "indeedmail.com"));
 
     private static bool IsTrustedAutoAddDomain(string? domain) =>
         IsIndeedDomain(domain)
@@ -359,8 +379,12 @@ public sealed partial class ApplicationEmailParser : IApplicationEmailParser
     private static partial Regex OutgoingApplicationLanguageRegex();
 
     [GeneratedRegex(
-        @"(?ix)(?:application|applied)\s+(?:for|to)\s+(?:the\s+)?(?<job>[^|\r\n]{2,100}?)\s+(?:position\s+)?at\s+(?<company>[^|\r\n]{2,100})")]
+        @"(?ix)(?:application|applied)\s+(?:for|to)\s+(?:the\s+)?(?<job>[^|\r\n]{2,100}?)\s+(?:position\s+)?at\s+(?<company>[^|\r\n]{2,100}?)(?=\s+(?:(?:has\s+been|was)\s+(?:sent|submitted|received)|is\s+complete)\b|[.|\r\n]|$)")]
     private static partial Regex JobAtCompanyRegex();
+
+    [GeneratedRegex(
+        @"(?ix)^\s*(?:indeed\s+application|application\s+(?:received|submitted|confirmation))\s*[:\-–—]+\s*(?:job\s+title\s*:\s*)?(?<job>[^|\r\n]{2,120}?)\s+at\s+(?<company>[^|\r\n]{2,100})\s*$")]
+    private static partial Regex SubjectJobAtCompanyRegex();
 
     [GeneratedRegex(
         @"(?ix)(?:application\s+(?:(?:was|has\s+been)\s+)?(?:sent|submitted)\s+to|we(?:'ve|\s+have)?\s+(?:sent|submitted)\s+your\s+application\s+to|the\s+following\s+items\s+were\s+sent\s+to|thank\s+you\s+for\s+applying\s+(?:to|with)|thanks\s+for\s+applying\s+(?:to|with))\s+(?<company>[^.|\r\n]{2,100})")]

@@ -342,7 +342,8 @@ if (googleIntegration.IsConfigured)
                 {
                     var failureReason = GmailOAuthFailure.Classify(
                         context.Request.Query["error"].ToString(),
-                        context.Failure);
+                        context.Failure,
+                        context.Request.Query["error_description"].ToString());
                     var oauthLogger = context.HttpContext.RequestServices
                         .GetRequiredService<ILoggerFactory>()
                         .CreateLogger("ApplyWise.GmailOAuth");

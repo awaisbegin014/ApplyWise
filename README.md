@@ -39,12 +39,6 @@ Keep every company, role, status, deadline, interview, note, and submitted resum
 
 ![ApplyWise job tracker product page](docs/screenshots/applywise-job-tracker.png)
 
-### Resume match
-
-Compare a job description with saved resumes and inspect supported, weak, and missing evidence before choosing a version.
-
-![ApplyWise resume match product page](docs/screenshots/applywise-resume-match.png)
-
 ### Resume builder
 
 Create a focused resume with guided sections, local draft saving, a live A4 preview, and selectable-text PDF export.

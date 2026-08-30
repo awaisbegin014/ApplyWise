@@ -191,6 +191,49 @@ public sealed class GmailImportServiceTests
     }
 
     [Fact]
+    public async Task SyncUser_OfficialIndeedMailDomain_IsQueriedAndAutomaticallyAdded()
+    {
+        await using var db = CreateContext();
+        await SeedConnectionAsync(db, autoAdd: true);
+        var handler = new GmailApiHandler(
+            new Dictionary<string, string>
+            {
+                ["indeed-mail"] = CreateMessageJson(
+                    "indeed-mail",
+                    "Application submitted: Software Engineer at Contoso",
+                    "Indeed Apply <applications@indeedmail.com>",
+                    "Your application has been submitted.",
+                    authenticatedFromDomain: "indeedmail.com")
+            });
+        var service = CreateService(
+            db,
+            handler,
+            new ApplicationEmailParser());
+
+        var result = await service.SyncUserAsync(UserId, CancellationToken.None);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(1, result.AutomaticallyAddedCount);
+        Assert.Contains(
+            "from:indeedemail.com",
+            handler.LastMessageListQuery,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "from:indeedmail.com",
+            handler.LastMessageListQuery,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "\"application has been submitted\"",
+            handler.LastMessageListQuery,
+            StringComparison.Ordinal);
+        var application = await db.JobApplications.SingleAsync();
+        Assert.Equal("Contoso", application.CompanyName);
+        Assert.Equal("Software Engineer", application.JobTitle);
+        Assert.Equal(JobSource.Indeed, application.Source);
+        Assert.Equal(ApplicationStatus.Applied, application.Status);
+    }
+
+    [Fact]
     public async Task SyncUser_IncompleteKnownIndeedImport_IsRefreshedAndAutomaticallyAdded()
     {
         await using var db = CreateContext();

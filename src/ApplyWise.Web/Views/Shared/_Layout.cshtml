@@ -14,7 +14,6 @@
         && ((string.Equals(controller, "Home", StringComparison.OrdinalIgnoreCase)
             && (string.Equals(action, "Index", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(action, "JobTracker", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(action, "ResumeMatch", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(action, "ResumeBuilder", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(action, "HowItWorks", StringComparison.OrdinalIgnoreCase)))
             || string.Equals(controller, "Contact", StringComparison.OrdinalIgnoreCase));
@@ -152,7 +151,6 @@ else
                 <nav class="aw-home-nav" id="public-navigation" aria-label="Primary navigation" data-home-nav>
                     <div class="aw-home-nav-links">
                         <a asp-controller="Home" asp-action="JobTracker" aria-current="@(action == "JobTracker" ? "page" : null)">Job tracker</a>
-                        <a asp-controller="Home" asp-action="ResumeMatch" aria-current="@(action == "ResumeMatch" ? "page" : null)">Resume match</a>
                         <a asp-controller="Home" asp-action="ResumeBuilder" aria-current="@(action == "ResumeBuilder" ? "page" : null)">Resume builder</a>
                         <a asp-controller="Home" asp-action="HowItWorks" aria-current="@(action == "HowItWorks" ? "page" : null)">How it works</a>
                         <a asp-controller="Contact" asp-action="Index" aria-current="@(controller == "Contact" ? "page" : null)">Contact us</a>

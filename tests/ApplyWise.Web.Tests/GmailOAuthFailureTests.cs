@@ -17,6 +17,8 @@ public sealed class GmailOAuthFailureTests
     [InlineData("interaction_required", GmailOAuthFailure.Expired)]
     [InlineData("login_required", GmailOAuthFailure.Expired)]
     [InlineData("consent_required", GmailOAuthFailure.Expired)]
+    [InlineData("admin_policy_enforced", GmailOAuthFailure.AccessBlocked)]
+    [InlineData("org_internal", GmailOAuthFailure.AccessBlocked)]
     [InlineData("unknown_provider_error", GmailOAuthFailure.Failed)]
     public void Provider_errors_are_mapped_to_safe_failure_categories(
         string providerError,
@@ -27,6 +29,30 @@ public sealed class GmailOAuthFailureTests
             new InvalidOperationException("provider detail must not be reflected"));
 
         Assert.Equal(expected, result);
+    }
+
+    [Theory]
+    [InlineData("This app is currently being tested and only approved test users can access it.")]
+    [InlineData("Access blocked: your organization's administrator needs to review this app.")]
+    public void Access_denied_policy_failures_are_not_reported_as_user_cancellation(
+        string providerDescription)
+    {
+        var result = GmailOAuthFailure.Classify(
+            "access_denied",
+            new InvalidOperationException("The remote server returned access_denied."),
+            providerDescription);
+
+        Assert.Equal(GmailOAuthFailure.AccessBlocked, result);
+    }
+
+    [Fact]
+    public void Plain_access_denied_is_still_reported_as_user_cancellation()
+    {
+        Assert.Equal(
+            GmailOAuthFailure.Cancelled,
+            GmailOAuthFailure.Classify(
+                "access_denied",
+                new InvalidOperationException("The user denied access.")));
     }
 
     [Theory]
@@ -56,6 +82,8 @@ public sealed class GmailOAuthFailureTests
     [InlineData(GmailOAuthFailure.Expired, "expired")]
     [InlineData(GmailOAuthFailure.GoogleUnavailable, "right now")]
     [InlineData(GmailOAuthFailure.Configuration, "administrator")]
+    [InlineData(GmailOAuthFailure.AccessBlocked, "test user")]
+    [InlineData(GmailOAuthFailure.AccessBlocked, "Workspace administrator")]
     public void Each_known_failure_has_specific_recovery_guidance(
         string reason,
         string expectedText)
