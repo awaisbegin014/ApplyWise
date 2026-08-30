@@ -384,7 +384,7 @@ jobs:
       - name: Deploy immutable tested artifact
         id: deploy_release
         continue-on-error: true
-        uses: rasmusbuchholdt/simply-web-deploy@026998dd5857dd5f3645cc13ed48335e07d7f94b
+        uses: rasmusbuchholdt/simply-web-deploy@cf9160163099a3b6b8ddf3978ed26b348221bbb8
         with:
           website-name: ${{ secrets.MONSTER_SERVER_USERNAME }}
           server-computer-name: ${{ secrets.MONSTER_SERVER_COMPUTER_NAME }}
@@ -441,7 +441,7 @@ jobs:
         id: deploy_rollback
         if: ${{ always() && (steps.deploy_release.outcome == 'failure' || steps.verify_release.outcome == 'failure') }}
         continue-on-error: true
-        uses: rasmusbuchholdt/simply-web-deploy@026998dd5857dd5f3645cc13ed48335e07d7f94b
+        uses: rasmusbuchholdt/simply-web-deploy@cf9160163099a3b6b8ddf3978ed26b348221bbb8
         with:
           website-name: ${{ secrets.MONSTER_SERVER_USERNAME }}
           server-computer-name: ${{ secrets.MONSTER_SERVER_COMPUTER_NAME }}
